@@ -223,48 +223,146 @@ $("meals").addEventListener("click", async e => {
 });
 
 /* ---------- Scanner de code-barres ---------- */
-let scanner = null, scanning = false, lastCode = "";
+// Vérifie la clé de contrôle d'un EAN-8 / UPC-A / EAN-13 (évite les mauvaises lectures)
+function validCode(c){
+  if (!/^\d{8}$|^\d{12,14}$/.test(c)) return false;
+  const d = c.split("").map(Number), chk = d.pop();
+  let sum = 0; d.reverse().forEach((n, i) => sum += n * (i % 2 === 0 ? 3 : 1));
+  return (10 - sum % 10) % 10 === chk;
+}
+let stream = null, track = null, detector = null, loopOn = false, h5 = null, lastCode = "", hits = {}, taken = false;
 async function startScan(){
-  $("foundSheet").hidden = true; $("scanSheet").hidden = false;
-  $("scanMsg").textContent = "Garde le téléphone stable, à une main de distance.";
-  if (typeof Html5Qrcode === "undefined"){ $("scanMsg").textContent = "Le scanner n'a pas pu se charger. Vérifie ta connexion."; return; }
+  $("foundSheet").hidden = true; $("scanSheet").hidden = false; $("manualCode").value = "";
+  $("scanMsg").textContent = "Tiens le produit à environ 20 cm. Le code se lit tout seul.";
+  $("torchBtn").hidden = true; $("zoomWrap").hidden = true; hits = {}; taken = false;
+  // 1) Lecteur intégré au téléphone (Android/Chrome) : le plus rapide
+  if ("BarcodeDetector" in window){
+    try {
+      const fmts = await BarcodeDetector.getSupportedFormats();
+      if (fmts.includes("ean_13")){
+        detector = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e"].filter(f => fmts.includes(f)) });
+        await openCamera(); $("scanVideo").hidden = false; $("reader").hidden = true;
+        loopOn = true; detectLoop(); return;
+      }
+    } catch(e){ await closeCamera(); if (camBlocked(e)) return; }
+  }
+  // 2) Sinon (iPhone) : lecteur de secours
+  $("scanVideo").hidden = true; $("reader").hidden = false;
+  if (typeof Html5Qrcode === "undefined"){ $("scanMsg").textContent = "Le scanner n'a pas pu se charger. Tape les chiffres plus bas."; return; }
   try {
-    scanner = scanner || new Html5Qrcode("reader", {
-      formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E],
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false });
-    scanning = true;
-    await scanner.start({ facingMode: "environment" }, { fps: 12, qrbox: (w, h) => ({ width: Math.floor(w * 0.85), height: Math.floor(Math.min(h, w) * 0.45) }) },
-      txt => { if (!scanning) return; scanning = false; onCode(txt); }, () => {});
-  } catch(err){
-    scanning = false;
-    $("scanMsg").textContent = "La caméra est bloquée. Autorise la caméra pour ce site dans les réglages du navigateur, puis réessaie.";
+    h5 = h5 || new Html5Qrcode("reader", { formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E], verbose: false });
+    await h5.start({ facingMode: "environment" },
+      { fps: 15, qrbox: (w, h) => ({ width: Math.floor(w * 0.82), height: Math.floor(h * 0.32) }),
+        videoConstraints: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: "continuous" }] } },
+      txt => accept(txt), () => {});
+    try { track = h5.getRunningTrack(); setupTools(); } catch(e){}
+  } catch(e){ camBlocked(e); }
+}
+function camBlocked(e){
+  if (e && (e.name === "NotAllowedError" || /permission/i.test(String(e)))){
+    $("scanMsg").textContent = "La caméra est bloquée. Autorise la caméra pour ce site dans le navigateur, ou tape les chiffres plus bas."; return true; }
+  $("scanMsg").textContent = "La caméra n'a pas démarré. Tape les chiffres plus bas."; return false;
+}
+async function openCamera(){
+  stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+    facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 },
+    advanced: [{ focusMode: "continuous" }] } });
+  const v = $("scanVideo"); v.srcObject = stream; await v.play();
+  track = stream.getVideoTracks()[0]; setupTools();
+}
+function setupTools(){
+  if (!track || !track.getCapabilities) return;
+  const caps = track.getCapabilities();
+  const adv = {};
+  if (caps.focusMode && caps.focusMode.includes("continuous")) adv.focusMode = "continuous";
+  if (caps.zoom){ // un peu de zoom : on tient le produit plus loin, la caméra fait mieux le focus
+    const z = Math.min(Math.max(2, caps.zoom.min), caps.zoom.max);
+    adv.zoom = z; const r = $("zoomRange"); r.min = caps.zoom.min; r.max = Math.min(caps.zoom.max, 6); r.step = caps.zoom.step || 0.1; r.value = z;
+    $("zoomWrap").hidden = false; }
+  if (Object.keys(adv).length) track.applyConstraints({ advanced: [adv] }).catch(() => {});
+  if (caps.torch){ $("torchBtn").hidden = false; $("torchBtn").setAttribute("aria-pressed", "false"); }
+}
+$("zoomRange").addEventListener("input", e => { if (track) track.applyConstraints({ advanced: [{ zoom: Number(e.target.value) }] }).catch(() => {}); });
+$("torchBtn").onclick = () => { if (!track) return; const on = $("torchBtn").getAttribute("aria-pressed") !== "true";
+  track.applyConstraints({ advanced: [{ torch: on }] }).then(() => $("torchBtn").setAttribute("aria-pressed", on)).catch(() => {}); };
+async function detectLoop(){
+  const v = $("scanVideo");
+  while (loopOn){
+    if (v.readyState >= 2){
+      try { const res = await detector.detect(v); for (const r of res){ if (accept(r.rawValue)) return; } } catch(e){}
+    }
+    await new Promise(r => setTimeout(r, 60));
   }
 }
-async function stopScan(){ scanning = false; try { if (scanner && scanner.isScanning) await scanner.stop(); } catch(e){} }
+// Accepte un code valide; s'il ne passe pas la vérification, il faut deux lectures identiques
+function accept(raw){
+  const c = String(raw || "").replace(/\D/g, ""); if (!c) return false;
+  if (!validCode(c)){ hits[c] = (hits[c] || 0) + 1; if (hits[c] < 2) return false; }
+  if (taken) return false; taken = true;
+  $("scanSheet").querySelector(".cam-box").classList.add("hit");
+  try { navigator.vibrate && navigator.vibrate(80); } catch(e){}
+  setTimeout(() => onCode(c), 120); loopOn = false; return true;
+}
+async function closeCamera(){
+  loopOn = false;
+  try { if (h5 && h5.isScanning) await h5.stop(); } catch(e){}
+  if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  track = null; $("scanSheet").querySelector(".cam-box").classList.remove("hit");
+}
 $("scanBtn").onclick = startScan;
-$("scanClose").onclick = async () => { await stopScan(); $("scanSheet").hidden = true; };
+$("scanClose").onclick = async () => { await closeCamera(); $("scanSheet").hidden = true; };
+$("manualForm").addEventListener("submit", e => { e.preventDefault(); const c = $("manualCode").value.replace(/\D/g, "");
+  if (c.length < 8){ toast("Tape tous les chiffres sous le code-barres"); return; } onCode(c); });
 
-async function lookupOFF(bc){
-  try {
-    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(bc)}.json?fields=product_name_fr,product_name,generic_name_fr,brands,quantity,categories_tags&lc=fr`);
-    if (!r.ok) return null; const j = await r.json(); if (j.status !== 1 || !j.product) return null;
-    const p = j.product; const name = (p.product_name_fr || p.generic_name_fr || p.product_name || "").trim(); if (!name) return null;
-    const tags = (p.categories_tags || []).join(" ");
-    const cat = tags ? OFF_MAP.find(([re]) => re.test(tags))[1] : guess(name);
-    const brand = (p.brands || "").split(",")[0].trim();
-    return { name: brand && !norm(name).includes(norm(brand)) ? `${name} (${brand})` : name, cat, size: p.quantity || "" };
-  } catch(e){ return null; }
+/* Recherche du produit : plusieurs banques gratuites, plusieurs formes du code */
+function codeVariants(c){
+  const v = new Set([c]);
+  if (c.length === 12) v.add("0" + c);
+  if (c.length === 13 && c[0] === "0") v.add(c.slice(1));
+  if (c.length === 14 && c[0] === "0") { v.add(c.slice(1)); v.add(c.slice(2)); }
+  return [...v];
+}
+const BANKS = ["https://world.openfoodfacts.org", "https://world.openproductsfacts.org", "https://world.openbeautyfacts.org"];
+async function fetchJSON(url, ms = 6000){
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, { signal: ctl.signal }); return r.ok ? await r.json() : null; } catch(e){ return null; } finally { clearTimeout(t); }
+}
+async function lookupOpen(bank, code){
+  const j = await fetchJSON(`${bank}/api/v2/product/${code}.json?fields=product_name_fr,product_name,product_name_en,generic_name_fr,generic_name,brands,quantity,categories_tags&lc=fr`);
+  if (!j || j.status !== 1 || !j.product) return null;
+  const p = j.product; const name = (p.product_name_fr || p.generic_name_fr || p.product_name || p.product_name_en || p.generic_name || "").trim();
+  if (!name) return null;
+  const tags = (p.categories_tags || []).join(" ");
+  let cat = bank.includes("beauty") ? "Soins personnels" : bank.includes("products") ? "Ménager" : null;
+  if (!cat) cat = tags ? OFF_MAP.find(([re]) => re.test(tags))[1] : guess(name);
+  const brand = (p.brands || "").split(",")[0].trim();
+  return { name: brand && !norm(name).includes(norm(brand)) ? `${name} (${brand})` : name, cat, size: p.quantity || "" };
+}
+async function lookupUPCdb(code){
+  const j = await fetchJSON(`https://api.upcitemdb.com/prod/trial/lookup?upc=${code}`);
+  const it = j?.items?.[0]; if (!it?.title) return null;
+  return { name: it.title.slice(0, 80), cat: guess(it.title), size: "" };
+}
+async function lookupAll(code){
+  const vars = codeVariants(code);
+  // Les banques Open*Facts en parallèle; la première qui trouve gagne (dans l'ordre de préférence)
+  const tries = BANKS.flatMap(b => vars.map(v => lookupOpen(b, v)));
+  const res = await Promise.all(tries);
+  const found = res.find(Boolean); if (found) return found;
+  for (const v of vars){ const u = await lookupUPCdb(v); if (u) return u; }
+  return null;
 }
 async function onCode(bc){
-  await stopScan(); lastCode = bc; $("scanSheet").hidden = true;
+  await closeCamera(); lastCode = bc; $("scanSheet").hidden = true;
   $("foundTitle").textContent = "Je cherche le produit…"; $("foundHint").textContent = `Code-barres ${bc}`;
   $("fName").value = ""; $("fQty").value = ""; $("fCat").value = "Autre"; $("foundSheet").hidden = false;
-  let mine = null; try { const r = await api("product_get", { barcode: bc }); mine = r.ok ? r.product : null; } catch(e){}
+  let mine = null;
+  try { for (const v of codeVariants(bc)){ const r = await api("product_get", { barcode: v }); if (r.ok && r.product){ mine = r.product; break; } } } catch(e){}
   if (mine){ $("foundTitle").textContent = "Déjà connu de la famille"; $("fName").value = mine.name; $("fCat").value = mine.cat; return; }
-  const off = await lookupOFF(bc);
-  if (off){ $("foundTitle").textContent = "Produit trouvé"; $("foundHint").textContent = `Tu peux changer le nom avant de l'ajouter.${off.size ? " Format : " + off.size : ""}`;
-    $("fName").value = off.name; $("fCat").value = off.cat; }
-  else { $("foundTitle").textContent = "Produit inconnu"; $("foundHint").textContent = "Écris son nom une fois. La prochaine fois que quelqu'un le scanne, l'app va s'en souvenir.";
+  const p = await lookupAll(bc);
+  if (p){ $("foundTitle").textContent = "Produit trouvé"; $("foundHint").textContent = `Vérifie le nom avant de l'ajouter.${p.size ? " Format : " + p.size : ""}`;
+    $("fName").value = p.name; $("fCat").value = CATS.includes(p.cat) ? p.cat : "Autre"; }
+  else { $("foundTitle").textContent = "Produit inconnu"; $("foundHint").textContent = `Code ${bc}. Écris son nom une fois : la prochaine fois que quelqu'un le scanne, l'app va s'en souvenir.`;
     $("fName").focus(); }
 }
 $("foundForm").addEventListener("submit", async e => {
