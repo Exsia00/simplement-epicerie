@@ -55,6 +55,7 @@
     <button role="tab" aria-selected="true" data-tab="list">La liste</button>
     <button role="tab" aria-selected="false" data-tab="inv">Avant de partir</button>
     <button role="tab" aria-selected="false" data-tab="meals">Repas</button>
+    <button role="tab" aria-selected="false" data-tab="deals">Spéciaux</button>
   </div></nav>
 
   <main class="gut"><div class="inner">
@@ -98,6 +99,23 @@
         </div>
       </form>
       <div id="meals"></div>
+    </div>
+    <div id="p-deals" role="tabpanel" hidden>
+      <div class="card deals-top">
+        <p class="hint" style="margin:0">Les circulaires de cette semaine chez <b>Maxi, IGA, Super C et Costco</b>, pour les articles de ta liste.</p>
+        <div class="row tight">
+          <button class="btn pri" type="button" id="dealsGo">Vérifier les spéciaux</button>
+          <span class="hint" id="dealsStatus" style="margin:0"></span>
+        </div>
+        <form class="inline" id="dealSearch" autocomplete="off">
+          <input class="f" id="dealQ" placeholder="Ou cherche un produit : poulet, café…" aria-label="Chercher un spécial">
+          <button class="btn" type="submit">Chercher</button>
+        </form>
+        <p class="hint region">Région des circulaires : <b id="regionTxt"></b> · <button type="button" class="linkbtn" id="regionEdit">changer</button></p>
+      </div>
+      <div id="dealsSummary"></div>
+      <div id="deals"></div>
+      <p class="hint center" style="margin-top:24px">Prix tirés des circulaires publiées sur Flipp. Vérifie en magasin : un format ou une variété peut différer.</p>
     </div>
   </div></main>
 

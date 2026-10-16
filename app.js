@@ -155,7 +155,7 @@ $("logout").onclick = () => logout();
 document.querySelector(".tabs").addEventListener("click", e => {
   const t = e.target.dataset.tab; if (!t) return; curTab = t;
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
-  ["list","inv","meals"].forEach(k => $("p-" + k).hidden = k !== t);
+  ["list","inv","meals","deals"].forEach(k => $("p-" + k).hidden = k !== t);
   $("addBar").hidden = t !== "list"; window.scrollTo(0, 0);
 });
 
@@ -367,6 +367,82 @@ $("foundForm").addEventListener("submit", async e => {
 });
 $("foundAgain").onclick = startScan;
 $("foundCancel").onclick = () => { $("foundSheet").hidden = true; };
+
+/* ---------- Spéciaux (circulaires via Flipp) ---------- */
+const STORES = [
+  { key: "maxi", label: "Maxi", re: /^maxi\b/i },
+  { key: "iga", label: "IGA", re: /^iga\b/i },
+  { key: "superc", label: "Super C", re: /^super\s*c\b/i },
+  { key: "costco", label: "Costco", re: /^costco\b/i }
+];
+const REGION_KEY = "epicerie-region";
+let region = (() => { try { return localStorage.getItem(REGION_KEY) || "G0R1A0"; } catch(e){ return "G0R1A0"; } })();
+$("regionTxt").textContent = region.slice(0, 3);
+$("regionEdit").onclick = () => {
+  const box = document.createElement("form"); box.className = "inline"; box.innerHTML = `<input class="f" id="regionIn" maxlength="7" placeholder="Code postal complet, ex. G0R 1A0" aria-label="Code postal"><button class="btn" type="submit">OK</button>`;
+  $("regionEdit").parentElement.after(box); $("regionEdit").hidden = true; $("regionIn").focus();
+  box.addEventListener("submit", e => { e.preventDefault(); const v = $("regionIn").value.toUpperCase().replace(/\s/g, "");
+    if (!/^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(v)){ toast("Écris un code postal complet, ex. G0R 1A0"); return; }
+    region = v; try { localStorage.setItem(REGION_KEY, v); } catch(err){} dealCache.clear();
+    $("regionTxt").textContent = v.slice(0, 3); box.remove(); $("regionEdit").hidden = false; toast("Région changée"); });
+};
+const storeOf = m => STORES.find(s => s.re.test(m || ""));
+const dealCache = new Map();
+const cleanQuery = n => String(n).replace(/\([^)]*\)/g, " ").replace(/\d+([.,]\d+)?\s*(kg|g|lb|l|ml|oz|x)\b/gi, " ").replace(/\s+/g, " ").trim();
+async function searchDeals(q){
+  const key = region + "|" + norm(q); if (dealCache.has(key)) return dealCache.get(key);
+  const j = await fetchJSON(`https://backflipp.wishabi.com/flipp/items/search?locale=fr-ca&postal_code=${region}&q=${encodeURIComponent(q)}`, 8000);
+  if (!j) return null;
+  const now = Date.now(), per = {};
+  const out = [];
+  for (const it of j.items || []){
+    const st = storeOf(it.merchant_name); if (!st) continue;
+    if (it.valid_to && Date.parse(it.valid_to) < now) continue;
+    per[st.key] = (per[st.key] || 0) + 1; if (per[st.key] > 2) continue; // les 2 plus pertinents par magasin
+    out.push({ store: st, name: it.name || "", price: it.current_price, pre: it.pre_price_text, post: it.post_price_text, story: it.sale_story, to: it.valid_to, img: it.clean_image_url || it.clipping_image_url });
+  }
+  out.sort((a, b) => (a.price ?? 1e9) - (b.price ?? 1e9));
+  dealCache.set(key, out); return out;
+}
+const priceText = d => [d.pre, d.price != null ? d.price.toFixed(2).replace(".", ",") + " $" : "", d.post].filter(Boolean).join(" ") || d.story || "Voir en magasin";
+const endText = d => { if (!d.to) return ""; const t = new Date(d.to); return "jusqu'au " + t.toLocaleDateString("fr-CA", { weekday: "short", day: "numeric", month: "short" }); };
+function dealRow(d){
+  return `<div class="deal">${d.img ? `<img src="${esc(d.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
+    <div class="dname"><span class="chip ${d.store.key}">${d.store.label}</span>${esc(d.name)}</div>
+    <div class="dmeta">${esc(endText(d))}${d.story && d.price != null ? " · " + esc(d.story) : ""}</div></div>
+    <div class="dprice">${esc(priceText(d))}</div></div>`;
+}
+async function runDeals(){
+  const items = data.items.filter(i => !i.done);
+  if (!items.length){ $("dealsSummary").innerHTML = ""; $("deals").innerHTML = `<p class="empty">Ta liste est vide. Ajoute des articles, puis reviens ici.</p>`; return; }
+  const btn = $("dealsGo"); btn.disabled = true; $("deals").innerHTML = ""; $("dealsSummary").innerHTML = "";
+  const results = new Array(items.length); let done = 0, failed = 0;
+  const queue = items.map((it, i) => [it, i]);
+  async function worker(){ while (queue.length){ const [it, i] = queue.shift();
+    const r = await searchDeals(cleanQuery(it.name)); if (r === null) failed++; results[i] = r || [];
+    done++; $("dealsStatus").textContent = `${done} / ${items.length} articles vérifiés…`; } }
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  btn.disabled = false;
+  if (failed === items.length){ $("dealsStatus").textContent = ""; $("deals").innerHTML = `<p class="empty">Je n'arrive pas à rejoindre les circulaires. Vérifie ta connexion et réessaie.</p>`; return; }
+  $("dealsStatus").textContent = `Mis à jour à ${new Date().toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}`;
+  // Combien d'articles de la liste sont en spécial dans chaque magasin
+  const count = Object.fromEntries(STORES.map(s => [s.key, 0]));
+  results.forEach(r => new Set(r.map(d => d.store.key)).forEach(k => count[k]++));
+  const max = Math.max(...Object.values(count));
+  const best = STORES.filter(s => count[s.key] === max && max > 0);
+  $("dealsSummary").innerHTML = `<div class="stores">${STORES.map(s => `<div class="store ${max > 0 && count[s.key] === max ? "best" : ""}"><b>${count[s.key]}</b><span>${s.label}</span></div>`).join("")}</div>
+    <p class="best-line">${max > 0 ? `${best.map(s => s.label).join(" et ")} : ${max} de tes ${items.length} articles en circulaire cette semaine.` : "Aucun article de ta liste n'est en circulaire cette semaine."}</p>`;
+  $("deals").innerHTML = items.map((it, i) => `<section><h2><span>${esc(it.name)}</span><span>${results[i].length ? results[i].length + " offre" + (results[i].length > 1 ? "s" : "") : ""}</span></h2>
+    <div class="box">${results[i].length ? results[i].slice(0, 5).map(dealRow).join("") : `<div class="nodeal">Pas en circulaire cette semaine.</div>`}</div></section>`).join("");
+}
+$("dealsGo").onclick = runDeals;
+$("dealSearch").addEventListener("submit", async e => {
+  e.preventDefault(); const q = $("dealQ").value.trim(); if (!q) return;
+  $("dealsSummary").innerHTML = ""; $("deals").innerHTML = `<p class="empty">Je cherche « ${esc(q)} »…</p>`;
+  const r = await searchDeals(q);
+  if (r === null){ $("deals").innerHTML = `<p class="empty">Je n'arrive pas à rejoindre les circulaires. Réessaie.</p>`; return; }
+  $("deals").innerHTML = `<section><h2><span>${esc(q)}</span><span>${r.length} offre${r.length > 1 ? "s" : ""}</span></h2><div class="box">${r.length ? r.map(dealRow).join("") : `<div class="nodeal">Rien en circulaire chez Maxi, IGA, Super C ou Costco cette semaine.</div>`}</div></section>`;
+});
 
 /* ---------- Démarrage ---------- */
 if (code) showApp(); else $("login").hidden = false;
