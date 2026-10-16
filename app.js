@@ -338,18 +338,12 @@ async function lookupOpen(bank, code){
   const brand = (p.brands || "").split(",")[0].trim();
   return { name: brand && !norm(name).includes(norm(brand)) ? `${name} (${brand})` : name, cat, size: p.quantity || "" };
 }
-async function lookupUPCdb(code){
-  const j = await fetchJSON(`https://api.upcitemdb.com/prod/trial/lookup?upc=${code}`);
-  const it = j?.items?.[0]; if (!it?.title) return null;
-  return { name: it.title.slice(0, 80), cat: guess(it.title), size: "" };
-}
 async function lookupAll(code){
   const vars = codeVariants(code);
   // Les banques Open*Facts en parallèle; la première qui trouve gagne (dans l'ordre de préférence)
   const tries = BANKS.flatMap(b => vars.map(v => lookupOpen(b, v)));
   const res = await Promise.all(tries);
   const found = res.find(Boolean); if (found) return found;
-  for (const v of vars){ const u = await lookupUPCdb(v); if (u) return u; }
   return null;
 }
 async function onCode(bc){
