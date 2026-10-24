@@ -31,7 +31,7 @@ const OFF_MAP = [
 ];
 
 const $ = id => document.getElementById(id);
-const norm = s => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+const norm = s => String(s ?? "").toLowerCase().replace(/œ/g, "oe").replace(/æ/g, "ae").normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function guess(name){ const n = norm(name); for (const c in GUESS) for (const w of GUESS[c].split(" ")) if (w.length > 2 && n.includes(norm(w))) return c; return "Autre"; }
 let toastT; function toast(t){ const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2800); }
@@ -420,7 +420,7 @@ $("regionEdit").onclick = () => {
   $("regionEdit").parentElement.after(box); $("regionEdit").hidden = true; $("regionIn").focus();
   box.addEventListener("submit", e => { e.preventDefault(); const v = $("regionIn").value.toUpperCase().replace(/\s/g, "");
     if (!/^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(v)){ toast("Écris un code postal complet, ex. G0R 1A0"); return; }
-    region = v; try { localStorage.setItem(REGION_KEY, v); } catch(err){} dealCache.clear();
+    region = v; try { localStorage.setItem(REGION_KEY, v); } catch(err){} dealCache.clear(); flyerCache.clear();
     $("regionTxt").textContent = v.slice(0, 3); box.remove(); $("regionEdit").hidden = false; toast("Région changée"); });
 };
 const storeOf = m => STORES.find(s => s.re.test(m || ""));
@@ -472,9 +472,79 @@ async function runDeals(){
   $("deals").innerHTML = items.map((it, i) => `<section><h2><span>${esc(it.name)}</span><span>${results[i].length ? results[i].length + " offre" + (results[i].length > 1 ? "s" : "") : ""}</span></h2>
     <div class="box">${results[i].length ? results[i].slice(0, 5).map(dealRow).join("") : `<div class="nodeal">Pas en circulaire cette semaine.</div>`}</div></section>`).join("");
 }
-$("dealsGo").onclick = runDeals;
+/* ---------- Circulaire complète d'un magasin ---------- */
+const flyerCache = new Map(); let flyerOpen = null;
+$("flyerBtns").innerHTML = STORES.map(s => `<button class="btn sm" type="button" data-flyer="${s.key}"><span class="chip ${s.key}">${s.label}</span></button>`).join("");
+const tidy = n => { let s = String(n || "").split(" | ")[0].trim();
+  if (s.replace(/[^A-Za-zÀ-ÿ]/g, "").length > 3 && s === s.toUpperCase()) s = s.toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1); };
+const httpsImg = u => u ? String(u).replace(/^http:/, "https:") : "";
+async function loadFlyer(st){
+  const key = region + "|" + st.key; if (flyerCache.has(key)) return flyerCache.get(key);
+  const d = await fetchJSON(`https://backflipp.wishabi.com/flipp/data?locale=fr-ca&postal_code=${region}`, 10000);
+  if (!d) return null;
+  const now = Date.now();
+  const fls = (d.flyers || []).filter(f => st.re.test(f.merchant || "") && (!f.valid_to || Date.parse(f.valid_to) >= now));
+  const f = fls.find(f => (f.categories || []).includes("Groceries")) || fls[0];
+  if (!f){ flyerCache.set(key, { none: true }); return { none: true }; }
+  const j = await fetchJSON(`https://backflipp.wishabi.com/flipp/flyers/${f.id}?locale=fr-ca`, 12000);
+  if (!j) return null;
+  const items = (j.items || []).filter(i => i.display_type === 1 && i.name).map(i => {
+    const name = tidy(i.name);
+    return { name, cat: guess(name), price: i.price ? Number(i.price) : null, img: httpsImg(i.cutout_image_url), to: i.valid_to || f.valid_to };
+  });
+  const out = { store: st, title: f.name || "", from: f.valid_from, to: f.valid_to, items };
+  flyerCache.set(key, out); return out;
+}
+function flyerRow(it, k){
+  const onList = data.items.some(i => !i.done && norm(i.name) === norm(it.name.split(",")[0]));
+  return `<div class="deal">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
+    <div class="dname">${esc(it.name)}</div></div>
+    <div class="dprice">${it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : `<span class="dmeta">Voir prix</span>`}</div>
+    <button class="addf" type="button" data-fadd="${k}" ${onList ? "disabled" : ""} aria-label="Ajouter ${esc(it.name)} à la liste">${onList ? "✓" : "+"}</button></div>`;
+}
+function renderFlyer(){
+  const fl = flyerOpen; if (!fl) return;
+  const q = norm($("flyerQ") ? $("flyerQ").value : "");
+  const shown = fl.items.map((it, k) => [it, k]).filter(([it]) => !q || norm(it.name).includes(q));
+  const d = t => t ? new Date(t).toLocaleDateString("fr-CA", { day: "numeric", month: "short" }) : "";
+  $("flyerBody").innerHTML = !shown.length ? `<p class="empty">Rien qui correspond dans cette circulaire.</p>` :
+    CATS.filter(c => shown.some(([it]) => it.cat === c)).map(c => {
+      const g = shown.filter(([it]) => it.cat === c);
+      return `<section><h2><span>${c === "Autre" ? "Autres produits" : c}</span><span>${g.length}</span></h2><div class="box">${g.map(([it, k]) => flyerRow(it, k)).join("")}</div></section>`;
+    }).join("");
+  $("flyerMeta").textContent = `${fl.items.length} produits · du ${d(fl.from)} au ${d(fl.to)}`;
+}
+async function openFlyer(st){
+  $("dealsSummary").hidden = true; $("deals").hidden = true; $("flyer").hidden = false;
+  document.querySelectorAll("[data-flyer]").forEach(b => b.setAttribute("aria-pressed", b.dataset.flyer === st.key));
+  $("flyer").innerHTML = `<p class="empty">J'ouvre la circulaire ${st.label}…</p>`;
+  const fl = await loadFlyer(st);
+  if (!fl){ $("flyer").innerHTML = `<p class="empty">Je n'arrive pas à rejoindre les circulaires. Vérifie ta connexion et réessaie.</p>`; return; }
+  if (fl.none){ $("flyer").innerHTML = `<p class="empty">Pas de circulaire ${st.label} trouvée pour ta région cette semaine.</p>`; return; }
+  flyerOpen = fl;
+  $("flyer").innerHTML = `<div class="flyer-head"><div><b><span class="chip ${st.key}">${st.label}</span>Circulaire</b><span class="hint" id="flyerMeta"></span></div>
+    <button class="btn sm" type="button" id="flyerClose">Fermer</button></div>
+    <form class="inline" id="flyerFilter" autocomplete="off"><input class="f" id="flyerQ" placeholder="Filtrer : poulet, fromage…" aria-label="Filtrer la circulaire"></form>
+    <div id="flyerBody"></div>`;
+  $("flyerQ").addEventListener("input", renderFlyer);
+  $("flyerFilter").addEventListener("submit", e => e.preventDefault());
+  $("flyerClose").onclick = closeFlyer;
+  renderFlyer();
+}
+function closeFlyer(){ flyerOpen = null; $("flyer").hidden = true; $("flyer").innerHTML = "";
+  $("dealsSummary").hidden = false; $("deals").hidden = false;
+  document.querySelectorAll("[data-flyer]").forEach(b => b.setAttribute("aria-pressed", "false")); }
+$("flyerBtns").addEventListener("click", e => { const b = e.target.closest("[data-flyer]"); if (!b) return;
+  const st = STORES.find(s => s.key === b.dataset.flyer); if (st) openFlyer(st); });
+$("flyer").addEventListener("click", async e => { const b = e.target.closest("[data-fadd]"); if (!b || !flyerOpen) return;
+  const it = flyerOpen.items[Number(b.dataset.fadd)]; if (!it) return;
+  const name = it.name.split(",")[0].trim(); b.disabled = true; b.textContent = "✓";
+  toast((await addToList(name, "", it.cat)) ? `${name} ajouté à la liste` : `${name} est déjà sur la liste`); });
+
+$("dealsGo").onclick = () => { closeFlyer(); runDeals(); };
 $("dealSearch").addEventListener("submit", async e => {
-  e.preventDefault(); const q = $("dealQ").value.trim(); if (!q) return;
+  e.preventDefault(); closeFlyer(); const q = $("dealQ").value.trim(); if (!q) return;
   $("dealsSummary").innerHTML = ""; $("deals").innerHTML = `<p class="empty">Je cherche « ${esc(q)} »…</p>`;
   const r = await searchDeals(q);
   if (r === null){ $("deals").innerHTML = `<p class="empty">Je n'arrive pas à rejoindre les circulaires. Réessaie.</p>`; return; }
