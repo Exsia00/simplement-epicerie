@@ -109,11 +109,21 @@ function dealTag(i){
   return `<span class="where ${fini ? "fini" : ""}"><span class="chip ${esc(d.store)}">${esc(d.label)}</span>${fini ? "spécial terminé" : esc(d.price || "") + esc(fin)}</span>`;
 }
 // Est-ce que la famille a déjà cet ingrédient? (marqué « J'en ai » dans Avant de partir)
-const words = t => norm(t).replace(/['’]/g, " ").split(/[^a-z0-9]+/).filter(w => w.length > 1).map(w => w.replace(/(s|x)$/, ""));
+const words = t => norm(t).replace(/['’]/g, " ").split(/[^a-z0-9]+/).filter(w => w.length > 1 || w === "d" || w === "a").map(w => w.length > 3 ? w.replace(/(s|x)$/, "") : w);
+// Un nom commence par l'autre, sans que la suite en fasse un autre produit :
+// « Lait » = « Lait 2 % (Natrel) », mais « Beurre » ≠ « Beurre d'arachide »
+const LINK = new Set(["d","de","du","de","a","au","aux","en","sans","pour"]);
+function sameStart(a, b){
+  if (!a.length || !b.length) return false;
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  if (!s.every((w, k) => l[k] === w)) return false;
+  return l.length === s.length || !LINK.has(l[s.length]);
+}
 function atHome(name){
   const iw = words(name);
   return data.staples.find(st => { if (st.status !== "ok") return false;
-    const sw = words(st.name); return sw.length && sw.every(w => iw.includes(w)); }) || null;
+    const sw = words(String(st.name).replace(/\([^)]*\)/g, " "));
+    return sameStart(iw, sw); }) || null;
 }
 const mealsOf = i => Array.isArray(i.meals) ? i.meals : [];
 // Repas choisis = les repas qui ont encore au moins un ingrédient sur la liste
@@ -252,11 +262,55 @@ $("inv").addEventListener("click", async e => {
   if (v === "manque"){ const added = await addToList(s.name, "", s.cat); toast(added ? `${s.name} ajouté à la liste` : `${s.name} est déjà sur la liste`); }
 });
 $("invReset").onclick = () => { act("staples_reset", {}, () => data.staples.forEach(s => s.status = "")); toast("Prêt pour une nouvelle vérification"); };
+function addStaple(n, cat){
+  n = String(n || "").trim(); if (!n) return false;
+  if (data.staples.some(s => norm(s.name) === norm(n))){ toast(`${n} est déjà dans tes produits de base`); return false; }
+  const c = cat || guess(n);
+  act("staple_add", { name: n, cat: c }, () => data.staples.push({ id: "tmp" + Date.now(), name: n, cat: c, status: "" }));
+  toast(`${n} ajouté aux produits de base`); return true;
+}
 $("stapleForm").addEventListener("submit", e => {
   e.preventDefault(); const n = $("stapleName").value.trim(); if (!n) return;
-  if (data.staples.some(s => norm(s.name) === norm(n))){ toast(`${n} est déjà dans tes produits de base`); return; }
-  $("stapleName").value = "";
-  act("staple_add", { name: n, cat: guess(n) }, () => data.staples.push({ id: "tmp" + Date.now(), name: n, cat: guess(n), status: "" }));
+  if (addStaple(n)){ $("stapleName").value = ""; hideSugg(); }
+});
+$("stapleScan").onclick = () => startScan("staple");
+
+/* Suggestions de marques pendant qu'on tape (Open Food Facts, produits vendus au Canada) */
+const suggCache = new Map(); let suggT = null, suggSeq = 0, suggList = [];
+function hideSugg(){ $("sugg").hidden = true; $("sugg").innerHTML = ""; suggList = []; }
+async function searchProducts(q){
+  const k = norm(q); if (suggCache.has(k)) return suggCache.get(k);
+  const j = await fetchJSON(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=12&tagtype_0=countries&tag_contains_0=contains&tag_0=canada&fields=code,product_name_fr,product_name,brands,quantity,categories_tags&sort_by=unique_scans_n`, 7000);
+  if (!j) return null;
+  const seen = new Set(), out = [];
+  for (const p of j.products || []){
+    const name = String(p.product_name_fr || p.product_name || "").trim(); if (!name) continue;
+    const brand = String(p.brands || "").split(",")[0].trim();
+    const full = brand && !norm(name).includes(norm(brand)) ? `${name} (${brand})` : name;
+    if (seen.has(norm(full))) continue; seen.add(norm(full));
+    const tags = (p.categories_tags || []).join(" ");
+    out.push({ name: full, brand, size: p.quantity || "", code: p.code || "", cat: tags ? OFF_MAP.find(([re]) => re.test(tags))[1] : guess(name) });
+    if (out.length >= 8) break;
+  }
+  suggCache.set(k, out); return out;
+}
+$("stapleName").addEventListener("input", () => {
+  clearTimeout(suggT); const q = $("stapleName").value.trim();
+  if (q.length < 3){ hideSugg(); return; }
+  suggT = setTimeout(async () => {
+    const my = ++suggSeq; $("sugg").hidden = false; $("sugg").innerHTML = `<div class="sugg-msg">Je cherche des marques…</div>`;
+    const r = await searchProducts(q); if (my !== suggSeq) return;
+    if (r === null){ $("sugg").innerHTML = `<div class="sugg-msg">Pas de suggestions pour l'instant. Appuie sur « Ajouter » pour le nom tel quel.</div>`; return; }
+    if (!r.length){ $("sugg").innerHTML = `<div class="sugg-msg">Aucune marque trouvée. Appuie sur « Ajouter » pour le nom tel quel.</div>`; return; }
+    suggList = r;
+    $("sugg").innerHTML = r.map((p, k) => `<button type="button" class="sugg-it" data-sg="${k}"><span>${esc(p.name)}</span>${p.size ? `<small>${esc(p.size)}</small>` : ""}</button>`).join("");
+  }, 600);
+});
+$("sugg").addEventListener("click", e => { const b = e.target.closest("[data-sg]"); if (!b) return;
+  const p = suggList[Number(b.dataset.sg)]; if (!p) return;
+  if (addStaple(p.name, p.cat)){
+    if (p.code) api("product_save", { barcode: p.code, name: p.name, cat: p.cat }).catch(() => {});
+    $("stapleName").value = ""; hideSugg(); }
 });
 
 /* ---------- Repas ---------- */
@@ -298,7 +352,9 @@ function validCode(c){
   return (10 - sum % 10) % 10 === chk;
 }
 let stream = null, track = null, detector = null, loopOn = false, h5 = null, lastCode = "", hits = {}, taken = false;
-async function startScan(){
+let scanFor = "list";
+async function startScan(target){
+  if (typeof target === "string") scanFor = target;
   $("foundSheet").hidden = true; $("scanSheet").hidden = false; $("manualCode").value = "";
   $("scanMsg").textContent = "Tiens le produit à environ 20 cm. Le code se lit tout seul.";
   $("torchBtn").hidden = true; $("zoomWrap").hidden = true; hits = {}; taken = false;
@@ -376,7 +432,7 @@ async function closeCamera(){
   if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
   track = null; $("scanSheet").querySelector(".cam-box").classList.remove("hit");
 }
-$("scanBtn").onclick = startScan;
+$("scanBtn").onclick = () => startScan("list");
 $("scanClose").onclick = async () => { await closeCamera(); $("scanSheet").hidden = true; };
 $("manualForm").addEventListener("submit", e => { e.preventDefault(); const c = $("manualCode").value.replace(/\D/g, "");
   if (c.length < 8){ toast("Tape tous les chiffres sous le code-barres"); return; } onCode(c); });
@@ -417,6 +473,9 @@ async function onCode(bc){
   await closeCamera(); lastCode = bc; $("scanSheet").hidden = true;
   $("foundTitle").textContent = "Je cherche le produit…"; $("foundHint").textContent = `Code-barres ${bc}`;
   $("fName").value = ""; $("fQty").value = ""; $("fCat").value = "Autre"; $("foundSheet").hidden = false;
+  const st = scanFor === "staple";
+  $("fQtyWrap").hidden = st; $("fGo").textContent = st ? "Ajouter aux produits de base" : "Ajouter à la liste";
+  $("fNameLbl").textContent = st ? "Nom dans les produits de base" : "Nom sur la liste";
   let mine = null;
   try { for (const v of codeVariants(bc)){ const r = await api("product_get", { barcode: v }); if (r.ok && r.product){ mine = r.product; break; } } } catch(e){}
   if (mine){ $("foundTitle").textContent = "Déjà connu de la famille"; $("fName").value = mine.name; $("fCat").value = mine.cat; return; }
@@ -430,9 +489,10 @@ $("foundForm").addEventListener("submit", async e => {
   e.preventDefault(); const name = $("fName").value.trim(); if (!name) return; const cat = $("fCat").value;
   $("foundSheet").hidden = true;
   api("product_save", { barcode: lastCode, name, cat }).catch(() => {});
+  if (scanFor === "staple"){ addStaple(name, cat); return; }
   toast((await addToList(name, $("fQty").value.trim(), cat)) ? `${name} ajouté à la liste` : `${name} est déjà sur la liste`);
 });
-$("foundAgain").onclick = startScan;
+$("foundAgain").onclick = () => startScan();
 $("foundCancel").onclick = () => { $("foundSheet").hidden = true; };
 
 /* ---------- Spéciaux (circulaires via Flipp) ---------- */

@@ -222,7 +222,7 @@ header p{color:#d9cbff}
 
 /* Titres de section : cyan, casse normale */
 section h2{font-family:var(--display);font-weight:400;font-size:.9rem;text-transform:none;letter-spacing:.02em;color:var(--cyan)}
-section h2 span:last-child{font-family:var(--lcd);font-size:1.25rem;line-height:1;color:var(--muted)}
+section h2 span:last-child:not(:first-child){font-family:var(--lcd);font-size:1.25rem;line-height:1;color:var(--muted)}
 
 /* Panneaux */
 .box,.card,.meal,.store{background:var(--surface);border-color:var(--line)}
@@ -306,3 +306,16 @@ li.done .qtyb{opacity:.5}
 .qstep{font-size:1.5rem;padding:0;color:var(--cyan)}
 #qIn{text-align:center;font-family:var(--lcd);font-size:1.6rem;padding:6px 10px}
 #qIn::placeholder{font-family:var(--body);font-size:.95rem}
+
+/* Produits de base : scan + suggestions de marques */
+.scanb{flex:none;width:50px;padding:0;display:grid;place-items:center;color:var(--cyan)}
+.scanb svg{width:24px;height:24px}
+.sugg{margin-top:8px;background:var(--surface);border:1.5px solid var(--cyan);border-radius:12px;overflow:hidden;box-shadow:0 0 14px rgba(43,232,255,.18)}
+.sugg-it{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);
+  background:none;border:0;border-top:1px solid rgba(255,255,255,.07);padding:12px 14px;cursor:pointer;min-height:48px}
+.sugg-it:first-child{border-top:0}
+.sugg-it:hover,.sugg-it:focus-visible{background:var(--accent-soft)}
+.sugg-it span{overflow-wrap:anywhere}
+.sugg-it small{flex:none;font-family:var(--lcd);font-size:1.1rem;color:var(--sun)}
+.sugg-msg{padding:12px 14px;color:var(--muted);font-size:.9rem}
+.two #fQtyWrap[hidden]+div{grid-column:1/-1}

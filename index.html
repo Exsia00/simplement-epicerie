@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Épicerie">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=VT323&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -77,9 +77,14 @@
       <section>
         <h2><span>Ajouter un produit de base</span></h2>
         <form class="inline" id="stapleForm" autocomplete="off">
-          <input class="f" id="stapleName" placeholder="Ex. : café, beurre…" aria-label="Produit de base" required>
+          <input class="f" id="stapleName" placeholder="Ex. : café, beurre d'arachide…" aria-label="Produit de base" required>
+          <button class="btn scanb" type="button" id="stapleScan" aria-label="Scanner un code-barres">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M16 8v5M16 15v1"/></svg>
+          </button>
           <button class="btn pri" type="submit">Ajouter</button>
         </form>
+        <div class="sugg" id="sugg" hidden></div>
+        <p class="hint" style="margin-top:8px">Tape au moins 3 lettres pour voir des marques, ou scanne le code-barres.</p>
       </section>
     </div>
 
@@ -163,14 +168,14 @@
   <form class="sheet-in form" id="foundForm" autocomplete="off">
     <div class="sheet-head"><b id="foundTitle">Produit trouvé</b></div>
     <p class="hint" id="foundHint"></p>
-    <label for="fName">Nom sur la liste</label>
+    <label for="fName" id="fNameLbl">Nom sur la liste</label>
     <input class="f" id="fName" required>
     <div class="two">
-      <div><label for="fQty">Qté</label><input class="f" id="fQty" placeholder="Optionnel"></div>
+      <div id="fQtyWrap"><label for="fQty">Qté</label><input class="f" id="fQty" placeholder="Optionnel"></div>
       <div><label for="fCat">Catégorie</label><select class="f" id="fCat"></select></div>
     </div>
     <div class="row tight">
-      <button class="btn pri" type="submit">Ajouter à la liste</button>
+      <button class="btn pri" type="submit" id="fGo">Ajouter à la liste</button>
       <button class="btn" type="button" id="foundAgain">Scanner un autre</button>
       <button class="btn ghost" type="button" id="foundCancel">Annuler</button>
     </div>
@@ -210,6 +215,6 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
