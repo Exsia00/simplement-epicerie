@@ -66,6 +66,7 @@ async function refresh(){
   } catch(e){ $("offline").hidden = false; }
 }
 const apiRepas = (action, args = {}) => rpc("api_repas", { p_code: code, p_action: action, p_args: args });
+const apiItem = (action, args = {}) => rpc("api_item", { p_code: code, p_action: action, p_args: args });
 const apiSpecial = (action, args = {}) => rpc("api_special", { p_code: code, p_action: action, p_args: args });
 async function act(action, args, optimistic, fn = api){
   if (optimistic){ optimistic(); renderAll(); }
@@ -146,7 +147,8 @@ function renderList(){
     const left = g.filter(i => !i.done).length;
     return `<section><h2><span>${c}</span><span>${left || "✓"}</span></h2><ul class="box">${g.map(i => `
       <li class="${i.done ? "done" : ""}"><label><input class="chk" type="checkbox" data-id="${esc(i.id)}" ${i.done ? "checked" : ""}>
-      <span class="name">${esc(i.name)}${i.qty ? `<span class="qty">${esc(i.qty)}</span>` : ""}${dealTag(i)}${mealsOf(i).length ? `<span class="for">pour : ${mealsOf(i).map(m => esc((data.meals.find(x => x.id === m.id) || m).name)).join(", ")}</span>` : ""}</span></label>
+      <span class="name">${esc(i.name)}${dealTag(i)}${mealsOf(i).length ? `<span class="for">pour : ${mealsOf(i).map(m => esc((data.meals.find(x => x.id === m.id) || m).name)).join(", ")}</span>` : ""}</span></label>
+      <button class="qtyb ${i.qty ? "" : "vide"}" type="button" data-q="${esc(i.id)}" aria-label="Quantité de ${esc(i.name)} : ${esc(i.qty || "aucune")}">${i.qty ? esc(i.qty) : "Qté"}</button>
       <button class="del" type="button" data-del="${esc(i.id)}" aria-label="Enlever ${esc(i.name)}">×</button></li>`).join("")}</ul></section>`;
   }).join("");
 }
@@ -231,6 +233,7 @@ $("list").addEventListener("click", e => {
     }, apiRepas);
     toast(`${meal.name || "Repas"} retiré de la liste`); return;
   }
+  const qb = e.target.closest("[data-q]"); if (qb){ openQty(qb.dataset.q); return; }
   const id = e.target.dataset.del; if (!id) return;
   act("item_del", { id }, () => { data.items = data.items.filter(i => i.id !== id); }); });
 $("clearBtn").onclick = () => { $("confirm").hidden = false; $("clearBtn").hidden = true; };
@@ -616,3 +619,27 @@ $("zAdd").onclick = async () => { if (!zoomCur) return; const name = zoomCur.nam
   const z = zoomCur, dl = { store: z.store.key, label: z.store.label, price: /\d/.test(z.price) ? z.price : "", to: z.to || "" };
   toast((await addToList(name, "", z.cat || guess(name), null, dl)) ? `${name} ajouté à la liste (${dl.label})` : `${name} : ${dl.label} noté sur la liste`);
   if (flyerOpen) renderFlyer(); };
+
+/* ---------- Quantité d'un article ---------- */
+let qtyId = null;
+// Change le premier nombre du texte (« 2 lb » → « 3 lb »); sans nombre, on part de 1
+function bump(t, step){
+  const txt = String(t || "").trim(), m = txt.match(/^(\d+(?:[.,]\d+)?)(.*)$/);
+  const n = m ? parseFloat(m[1].replace(",", ".")) : 1, rest = m ? m[2] : (txt ? " " + txt : "");
+  const v = Math.max(1, Math.round((n + step) * 100) / 100);
+  return String(v).replace(".", ",") + rest;
+}
+function openQty(id){
+  const it = data.items.find(i => i.id === id); if (!it) return;
+  if (String(id).startsWith("tmp")){ toast("Un instant, l'article s'enregistre…"); return; }
+  qtyId = id; $("qName").textContent = it.name; $("qIn").value = it.qty || ""; $("qtySheet").hidden = false;
+}
+const closeQty = () => { $("qtySheet").hidden = true; qtyId = null; };
+$("qMinus").onclick = () => { $("qIn").value = bump($("qIn").value, -1); };
+$("qPlus").onclick = () => { $("qIn").value = bump($("qIn").value, +1); };
+$("qClear").onclick = () => { $("qIn").value = ""; $("qIn").focus(); };
+$("qCancel").onclick = closeQty;
+$("qtySheet").addEventListener("click", e => { if (e.target === $("qtySheet")) closeQty(); });
+$("qtyForm").addEventListener("submit", e => { e.preventDefault(); if (!qtyId) return;
+  const id = qtyId, q = $("qIn").value.trim(); closeQty();
+  act("qty", { id, qty: q }, () => { const it = data.items.find(i => i.id === id); if (it) it.qty = q; }, apiItem); });

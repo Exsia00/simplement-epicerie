@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Épicerie">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=VT323&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -177,6 +177,24 @@
   </form>
 </div>
 
+<!-- QUANTITÉ -->
+<div class="sheet" id="qtySheet" hidden role="dialog" aria-modal="true" aria-labelledby="qName">
+  <form class="sheet-in form" id="qtyForm" autocomplete="off">
+    <div class="sheet-head"><b id="qName"></b></div>
+    <label for="qIn">Quantité</label>
+    <div class="qrow">
+      <button class="btn qstep" type="button" id="qMinus" aria-label="Un de moins">−</button>
+      <input class="f" id="qIn" placeholder="Ex. : 2, 1 lb, 1 paquet">
+      <button class="btn qstep" type="button" id="qPlus" aria-label="Un de plus">+</button>
+    </div>
+    <div class="row tight">
+      <button class="btn pri" type="submit">Enregistrer</button>
+      <button class="btn" type="button" id="qClear">Effacer</button>
+      <button class="btn ghost" type="button" id="qCancel">Annuler</button>
+    </div>
+  </form>
+</div>
+
 <!-- FICHE AGRANDIE D'UN SPÉCIAL -->
 <div class="sheet" id="zoomSheet" hidden role="dialog" aria-modal="true" aria-label="Détail du spécial">
   <div class="sheet-in zoom-in">
@@ -192,6 +210,6 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

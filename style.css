@@ -295,3 +295,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 @media (prefers-reduced-motion:reduce){.sky::after{animation:none}}
 .planned .qty{font-family:var(--body);font-size:.88rem}
 .hrow .btn.ghost,header p{text-shadow:0 1px 6px #0d0524}
+
+/* Quantité */
+.qtyb{flex:none;min-width:48px;height:36px;padding:0 10px;border-radius:10px;border:1.5px solid var(--line);background:#120828;
+  color:var(--sun);font-family:var(--lcd);font-size:1.3rem;line-height:1;cursor:pointer;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qtyb.vide{color:var(--muted);font-family:var(--body);font-size:.8rem;font-weight:700;border-style:dashed}
+.qtyb:hover{border-color:var(--cyan)}
+li.done .qtyb{opacity:.5}
+.qrow{display:grid;grid-template-columns:56px 1fr 56px;gap:8px}
+.qstep{font-size:1.5rem;padding:0;color:var(--cyan)}
+#qIn{text-align:center;font-family:var(--lcd);font-size:1.6rem;padding:6px 10px}
+#qIn::placeholder{font-family:var(--body);font-size:.95rem}
