@@ -479,7 +479,8 @@ async function runDeals(){
 const flyerCache = new Map(); let flyerOpen = null;
 $("flyerBtns").innerHTML = STORES.map(s => `<button class="btn sm" type="button" data-flyer="${s.key}"><span class="chip ${s.key}">${s.label}</span></button>`).join("");
 const tidy = n => { let s = String(n || "").split(" | ")[0].trim();
-  if (s.replace(/[^A-Za-zÀ-ÿ]/g, "").length > 3 && s === s.toUpperCase()) s = s.toLowerCase();
+  const L = s.replace(/[^A-Za-zÀ-ÿŒœ]/g, ""), U = L.replace(/[^A-ZÀ-ÞŒ]/g, "");
+  if (L.length > 3 && U.length / L.length > 0.6) s = s.toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1); };
 const httpsImg = u => u ? String(u).replace(/^http:/, "https:") : "";
 async function loadFlyer(st){
