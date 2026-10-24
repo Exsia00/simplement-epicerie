@@ -18,15 +18,17 @@ const GUESS = {
 };
 // Catégories Open Food Facts → nos catégories (le premier qui correspond gagne)
 const OFF_MAP = [
-  [/frozen/, "Surgelés"],
-  [/beverages|drinks|waters|juices|sodas|coffees|teas/, "Boissons"],
-  [/dairies|dairy|cheeses|milks|yogurts|butters|eggs|creams/, "Produits laitiers et œufs"],
-  [/meats|poultry|fishes|seafood|hams|sausages/, "Viandes et poissons"],
-  [/breads|bakery|viennoiseries|tortillas|bagels/, "Boulangerie"],
-  [/fruits|vegetables|plant-based-foods-and-beverages:fresh/, "Fruits et légumes"],
-  [/snacks|sweet-snacks|salty-snacks|chips|biscuits|cookies|chocolates|candies|confectioneries/, "Collations"],
-  [/cleaning|household|detergents/, "Ménager"],
-  [/hygiene|cosmetics|toothpastes|shampoos/, "Soins personnels"],
+  // « :mot » = le début d'une étiquette (ex. « en:beverages »), pour ne pas confondre
+  // « plant-based-foods-and-beverages » (beurre d'arachide) avec une boisson
+  [/:(frozen[\w-]*)\b/, "Surgelés"],
+  [/:(beverages|drinks|waters|juices|sodas|coffees|teas)\b/, "Boissons"],
+  [/:(dairies|dairy|cheeses|milks|yogurts|butters|eggs|creams)\b/, "Produits laitiers et œufs"],
+  [/:(meats|poultry|fishes|seafood|hams|sausages)\b/, "Viandes et poissons"],
+  [/:(breads|bakery|viennoiseries|tortillas|bagels)\b/, "Boulangerie"],
+  [/:(fruits|vegetables|fresh-fruits|fresh-vegetables)\b/, "Fruits et légumes"],
+  [/:(snacks|sweet-snacks|salty-snacks|chips|biscuits|cookies|chocolates|candies|confectioneries)\b/, "Collations"],
+  [/:(cleaning|household|detergents)\b/, "Ménager"],
+  [/:(hygiene|cosmetics|toothpastes|shampoos)\b/, "Soins personnels"],
   [/./, "Garde-manger"]
 ];
 
@@ -281,15 +283,23 @@ function hideSugg(){ $("sugg").hidden = true; $("sugg").innerHTML = ""; suggList
 async function searchProducts(q){
   const k = norm(q); if (suggCache.has(k)) return suggCache.get(k);
   const j = await fetchJSON(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=12&tagtype_0=countries&tag_contains_0=contains&tag_0=canada&fields=code,product_name_fr,product_name,brands,quantity,categories_tags&sort_by=unique_scans_n`, 7000);
-  if (!j) return null;
+  let prods = j ? (j.products || []) : null, fallbackCat = null;
+  if (!prods || prods.length < 3){
+    // Pas assez d'aliments : on regarde les produits ménagers et de soins vendus au Canada
+    const q2 = `search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=8&tagtype_0=countries&tag_contains_0=contains&tag_0=canada&fields=code,product_name_fr,product_name,brands,quantity`;
+    const [h, c] = await Promise.all([fetchJSON(`https://world.openproductsfacts.org/cgi/search.pl?${q2}`, 6000), fetchJSON(`https://world.openbeautyfacts.org/cgi/search.pl?${q2}`, 6000)]);
+    const extra = [...((h && h.products) || []).map(p => ({ ...p, _cat: "Ménager" })), ...((c && c.products) || []).map(p => ({ ...p, _cat: "Soins personnels" }))];
+    if (!prods && !h && !c) return null;
+    prods = [...(prods || []), ...extra];
+  }
   const seen = new Set(), out = [];
-  for (const p of j.products || []){
+  for (const p of prods){
     const name = String(p.product_name_fr || p.product_name || "").trim(); if (!name) continue;
     const brand = String(p.brands || "").split(",")[0].trim();
     const full = brand && !norm(name).includes(norm(brand)) ? `${name} (${brand})` : name;
     if (seen.has(norm(full))) continue; seen.add(norm(full));
     const tags = (p.categories_tags || []).join(" ");
-    out.push({ name: full, brand, size: p.quantity || "", code: p.code || "", cat: tags ? OFF_MAP.find(([re]) => re.test(tags))[1] : guess(name) });
+    out.push({ name: full, brand, size: p.quantity || "", code: p.code || "", cat: p._cat || (tags ? OFF_MAP.find(([re]) => re.test(tags))[1] : guess(name)) });
     if (out.length >= 8) break;
   }
   suggCache.set(k, out); return out;
