@@ -160,3 +160,12 @@ textarea.f{min-height:120px;resize:vertical;line-height:1.45}
 #flyerFilter{margin-top:10px}
 .addf{width:40px;height:40px;flex:none;border-radius:10px;border:1.5px solid var(--accent);background:var(--accent-soft);color:var(--accent);font:inherit;font-weight:800;font-size:1.3rem;cursor:pointer}
 .addf:disabled{border-color:var(--line);background:none;color:var(--muted);cursor:default}
+
+/* Fiche agrandie */
+.zoomable{cursor:pointer}
+.zoomable:hover{background:var(--bg)}
+.zoom-in .sheet-head .chip{font-size:.85rem;padding:4px 10px}
+.zimg{display:block;width:100%;max-height:48vh;object-fit:contain;background:#fff;border-radius:14px;border:1px solid var(--line)}
+.zname{font-family:var(--display);font-weight:600;font-size:1.2rem;margin:14px 0 4px;overflow-wrap:anywhere}
+.zprice{font-family:var(--display);font-weight:800;font-size:1.8rem;margin:0 0 6px;color:var(--accent);font-variant-numeric:tabular-nums}
+.zoom-in .row .btn{width:100%}

@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Épicerie">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -177,9 +177,21 @@
   </form>
 </div>
 
+<!-- FICHE AGRANDIE D'UN SPÉCIAL -->
+<div class="sheet" id="zoomSheet" hidden role="dialog" aria-modal="true" aria-label="Détail du spécial">
+  <div class="sheet-in zoom-in">
+    <div class="sheet-head"><span id="zStore" class="chip"></span><button class="btn sm" type="button" id="zClose">Fermer</button></div>
+    <img id="zImg" class="zimg" alt="">
+    <h2 class="zname" id="zName"></h2>
+    <p class="zprice" id="zPrice"></p>
+    <p class="hint" id="zMeta"></p>
+    <div class="row tight"><button class="btn pri" type="button" id="zAdd">Ajouter à la liste</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

@@ -443,8 +443,11 @@ async function searchDeals(q){
 }
 const priceText = d => [d.pre, d.price != null ? d.price.toFixed(2).replace(".", ",") + " $" : "", d.post].filter(Boolean).join(" ") || d.story || "Voir en magasin";
 const endText = d => { if (!d.to) return ""; const t = new Date(d.to); return "jusqu'au " + t.toLocaleDateString("fr-CA", { weekday: "short", day: "numeric", month: "short" }); };
+/* Fiche agrandie d'un spécial */
+const zoomReg = [];
+const zoomId = o => zoomReg.push(o) - 1;
 function dealRow(d){
-  return `<div class="deal">${d.img ? `<img src="${esc(d.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
+  return `<div class="deal zoomable" data-zoom="${zoomId({ store: d.store, name: d.name, price: priceText(d), meta: [endText(d), d.story && d.price != null ? d.story : ""].filter(Boolean).join(" · "), img: d.img })}">${d.img ? `<img src="${esc(d.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
     <div class="dname"><span class="chip ${d.store.key}">${d.store.label}</span>${esc(d.name)}</div>
     <div class="dmeta">${esc(endText(d))}${d.story && d.price != null ? " · " + esc(d.story) : ""}</div></div>
     <div class="dprice">${esc(priceText(d))}</div></div>`;
@@ -498,7 +501,8 @@ async function loadFlyer(st){
 }
 function flyerRow(it, k){
   const onList = data.items.some(i => !i.done && norm(i.name) === norm(it.name.split(",")[0]));
-  return `<div class="deal">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
+  const z = zoomId({ store: flyerOpen.store, name: it.name, price: it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : "Prix à voir en magasin", meta: endText({ to: it.to }), img: it.img, cat: it.cat });
+  return `<div class="deal zoomable" data-zoom="${z}">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
     <div class="dname">${esc(it.name)}</div></div>
     <div class="dprice">${it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : `<span class="dmeta">Voir prix</span>`}</div>
     <button class="addf" type="button" data-fadd="${k}" ${onList ? "disabled" : ""} aria-label="Ajouter ${esc(it.name)} à la liste">${onList ? "✓" : "+"}</button></div>`;
@@ -556,3 +560,26 @@ if (code) showApp(); else $("login").hidden = false;
 setInterval(() => { if (!document.hidden && !$("app").hidden) refresh(); }, 4000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 window.addEventListener("online", refresh);
+
+let zoomCur = null;
+document.addEventListener("click", e => {
+  if (e.target.closest("[data-fadd]")) return;
+  const row = e.target.closest("[data-zoom]"); if (!row) return;
+  const z = zoomReg[Number(row.dataset.zoom)]; if (!z) return; zoomCur = z;
+  const big = z.img ? String(z.img).replace(/\/(small|medium|large)\.(jpg|png)$/, "/extra_large.$2") : "";
+  $("zImg").hidden = !z.img; if (z.img){ $("zImg").src = big; $("zImg").onerror = () => { $("zImg").onerror = null; $("zImg").src = z.img; }; }
+  $("zStore").className = "chip " + z.store.key; $("zStore").textContent = z.store.label;
+  $("zName").textContent = z.name; $("zPrice").textContent = z.price; $("zMeta").textContent = z.meta || "";
+  const listName = z.name.split(",")[0].trim();
+  const onList = data.items.some(i => !i.done && norm(i.name) === norm(listName));
+  $("zAdd").disabled = onList; $("zAdd").textContent = onList ? "✓ Déjà sur la liste" : "Ajouter à la liste";
+  $("zoomSheet").hidden = false;
+});
+const closeZoom = () => { $("zoomSheet").hidden = true; zoomCur = null; };
+$("zClose").onclick = closeZoom;
+$("zoomSheet").addEventListener("click", e => { if (e.target === $("zoomSheet")) closeZoom(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("zoomSheet").hidden) closeZoom(); });
+$("zAdd").onclick = async () => { if (!zoomCur) return; const name = zoomCur.name.split(",")[0].trim();
+  $("zAdd").disabled = true; $("zAdd").textContent = "✓ Ajouté";
+  toast((await addToList(name, "", zoomCur.cat || guess(name))) ? `${name} ajouté à la liste` : `${name} est déjà sur la liste`);
+  if (flyerOpen) renderFlyer(); };
