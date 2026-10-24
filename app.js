@@ -107,6 +107,13 @@ function dealTag(i){
   const fin = d.to && !fini ? " · jusqu'au " + new Date(d.to).toLocaleDateString("fr-CA", { day: "numeric", month: "short" }) : "";
   return `<span class="where ${fini ? "fini" : ""}"><span class="chip ${esc(d.store)}">${esc(d.label)}</span>${fini ? "spécial terminé" : esc(d.price || "") + esc(fin)}</span>`;
 }
+// Est-ce que la famille a déjà cet ingrédient? (marqué « J'en ai » dans Avant de partir)
+const words = t => norm(t).replace(/['’]/g, " ").split(/[^a-z0-9]+/).filter(w => w.length > 1).map(w => w.replace(/(s|x)$/, ""));
+function atHome(name){
+  const iw = words(name);
+  return data.staples.find(st => { if (st.status !== "ok") return false;
+    const sw = words(st.name); return sw.length && sw.every(w => iw.includes(w)); }) || null;
+}
 const mealsOf = i => Array.isArray(i.meals) ? i.meals : [];
 // Repas choisis = les repas qui ont encore au moins un ingrédient sur la liste
 function plannedMeals(){
@@ -163,7 +170,8 @@ function renderMeals(){
   $("meals").innerHTML = ms.map(m => { const ing = Array.isArray(m.ingredients) ? m.ingredients : [];
     return `<details class="meal" data-id="${esc(m.id)}" ${open.has(m.id) ? "open" : ""}><summary><b>${esc(m.name)}</b><span>${onList.has(m.id) ? `<i class="onlist">Sur la liste</i>` : ""}${ing.length} ingrédient${ing.length>1?"s":""}</span></summary><div class="body">
       <div class="row" style="margin-top:14px"><button class="btn pri sm" type="button" data-cook="${esc(m.id)}">Ajouter les ingrédients à la liste</button></div>
-      <h3>Ingrédients</h3><ul>${ing.map(x => `<li>${esc(x.name)}${x.qty ? ` <span class="qty">${esc(x.qty)}</span>` : ""}</li>`).join("") || "<li>Aucun</li>"}</ul>
+      <h3>Ingrédients</h3><ul>${ing.map((x, k) => { const h = atHome(x.name);
+        return `<li class="${h ? "home" : ""}">${esc(x.name)}${x.qty ? ` <span class="qty">${esc(x.qty)}</span>` : ""}${h ? ` <span class="athome">à la maison</span> <button class="linkbtn" type="button" data-anyway="${esc(m.id)}" data-k="${k}">ajouter quand même</button>` : ""}</li>`; }).join("") || "<li>Aucun</li>"}</ul>
       ${m.recipe ? `<h3>Recette</h3><p class="recipe">${esc(m.recipe)}</p>` : ""}
       <div class="row"><button class="btn sm" type="button" data-medit="${esc(m.id)}">Modifier</button><button class="btn sm warnb" type="button" data-mdel="${esc(m.id)}">Supprimer</button></div>
     </div></details>`; }).join("");
@@ -266,9 +274,13 @@ $("mealForm").addEventListener("submit", async e => {
 });
 $("meals").addEventListener("click", async e => {
   const t = e.target.dataset;
-  if (t.cook){ const m = data.meals.find(x => x.id === t.cook); if (!m) return; let a = 0, s = 0;
-    for (const x of m.ingredients || []){ if (await addToList(x.name, x.qty, x.cat, { id: m.id, name: m.name })) a++; else s++; }
-    toast(`${a} ajouté${a>1?"s":""} à la liste${s ? ` · ${s} déjà dessus` : ""}`); }
+  if (t.cook){ const m = data.meals.find(x => x.id === t.cook); if (!m) return; let a = 0, s = 0, h = 0;
+    for (const x of m.ingredients || []){
+      if (atHome(x.name)){ h++; continue; }
+      if (await addToList(x.name, x.qty, x.cat, { id: m.id, name: m.name })) a++; else s++; }
+    toast(`${a} ajouté${a>1?"s":""} à la liste${h ? ` · ${h} déjà à la maison` : ""}${s ? ` · ${s} déjà dessus` : ""}`); }
+  if (t.anyway){ const m = data.meals.find(x => x.id === t.anyway); const x = m && (m.ingredients || [])[Number(t.k)]; if (!x) return;
+    toast((await addToList(x.name, x.qty, x.cat, { id: m.id, name: m.name })) ? `${x.name} ajouté à la liste` : `${x.name} est déjà sur la liste`); }
   if (t.medit){ openForm(data.meals.find(x => x.id === t.medit)); window.scrollTo(0, 0); }
   if (t.mdel){ if (e.target.dataset.sure){ act("meal_del", { id: t.mdel }, () => { data.meals = data.meals.filter(x => x.id !== t.mdel); }); }
     else { e.target.dataset.sure = "1"; e.target.textContent = "Appuie encore pour supprimer"; } }
