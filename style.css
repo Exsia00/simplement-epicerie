@@ -208,7 +208,7 @@ h1{font-family:var(--display);font-weight:400;letter-spacing:.01em;
   background:linear-gradient(180deg,#ffffff 0%,#bdf6ff 45%,var(--cyan) 50%,#ff8ae6 100%);
   -webkit-background-clip:text;background-clip:text;color:transparent;
   filter:drop-shadow(0 0 10px rgba(43,232,255,.35))}
-.hrow h1{font-size:1.7rem}
+.hrow h1{font-size:1.35rem;line-height:1.15}
 header p{color:#d9cbff}
 .bar{height:8px;background:rgba(255,255,255,.12);border-radius:4px}
 .bar span{background:linear-gradient(90deg,var(--accent),var(--cyan));box-shadow:0 0 12px var(--cyan)}
