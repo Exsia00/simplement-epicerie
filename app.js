@@ -66,6 +66,7 @@ async function refresh(){
   } catch(e){ $("offline").hidden = false; }
 }
 const apiRepas = (action, args = {}) => rpc("api_repas", { p_code: code, p_action: action, p_args: args });
+const apiSpecial = (action, args = {}) => rpc("api_special", { p_code: code, p_action: action, p_args: args });
 async function act(action, args, optimistic, fn = api){
   if (optimistic){ optimistic(); renderAll(); }
   busy++;
@@ -77,8 +78,16 @@ async function act(action, args, optimistic, fn = api){
   finally { busy--; refresh(); }
 }
 // meal (optionnel) = { id, name } : retient pour quel repas l'article est sur la liste
-async function addToList(name, qty, cat, meal){
+// deal (optionnel) = { store, label, price, to } : retient où l'acheter en spécial
+async function addToList(name, qty, cat, meal, deal){
   const dup = data.items.find(i => !i.done && norm(i.name) === norm(name));
+  if (deal){
+    const r = await act("item_add", { name, qty: qty || "", cat: cat || guess(name), deal }, () => {
+      if (dup) dup.deal = deal;
+      else data.items.push({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false, meals: [], deal });
+    }, apiSpecial);
+    return !dup && r.ok && !r.dup;
+  }
   if (dup && !meal) return false;
   const args = { name, qty: qty || "", cat: cat || guess(name) };
   if (!meal){
@@ -91,6 +100,12 @@ async function addToList(name, qty, cat, meal){
     else data.items.push({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false, meals: [meal], from_meal: true });
   }, apiRepas);
   return !dup && r.ok && !r.dup;
+}
+function dealTag(i){
+  const d = i.deal; if (!d || !d.label) return "";
+  const fini = d.to && Date.parse(d.to) < Date.now();
+  const fin = d.to && !fini ? " · jusqu'au " + new Date(d.to).toLocaleDateString("fr-CA", { day: "numeric", month: "short" }) : "";
+  return `<span class="where ${fini ? "fini" : ""}"><span class="chip ${esc(d.store)}">${esc(d.label)}</span>${fini ? "spécial terminé" : esc(d.price || "") + esc(fin)}</span>`;
 }
 const mealsOf = i => Array.isArray(i.meals) ? i.meals : [];
 // Repas choisis = les repas qui ont encore au moins un ingrédient sur la liste
@@ -124,7 +139,7 @@ function renderList(){
     const left = g.filter(i => !i.done).length;
     return `<section><h2><span>${c}</span><span>${left || "✓"}</span></h2><ul class="box">${g.map(i => `
       <li class="${i.done ? "done" : ""}"><label><input class="chk" type="checkbox" data-id="${esc(i.id)}" ${i.done ? "checked" : ""}>
-      <span class="name">${esc(i.name)}${i.qty ? `<span class="qty">${esc(i.qty)}</span>` : ""}${mealsOf(i).length ? `<span class="for">pour : ${mealsOf(i).map(m => esc((data.meals.find(x => x.id === m.id) || m).name)).join(", ")}</span>` : ""}</span></label>
+      <span class="name">${esc(i.name)}${i.qty ? `<span class="qty">${esc(i.qty)}</span>` : ""}${dealTag(i)}${mealsOf(i).length ? `<span class="for">pour : ${mealsOf(i).map(m => esc((data.meals.find(x => x.id === m.id) || m).name)).join(", ")}</span>` : ""}</span></label>
       <button class="del" type="button" data-del="${esc(i.id)}" aria-label="Enlever ${esc(i.name)}">×</button></li>`).join("")}</ul></section>`;
   }).join("");
 }
@@ -447,7 +462,7 @@ const endText = d => { if (!d.to) return ""; const t = new Date(d.to); return "j
 const zoomReg = [];
 const zoomId = o => zoomReg.push(o) - 1;
 function dealRow(d){
-  return `<div class="deal zoomable" data-zoom="${zoomId({ store: d.store, name: d.name, price: priceText(d), meta: [endText(d), d.story && d.price != null ? d.story : ""].filter(Boolean).join(" · "), img: d.img })}">${d.img ? `<img src="${esc(d.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
+  return `<div class="deal zoomable" data-zoom="${zoomId({ store: d.store, name: d.name, price: priceText(d), meta: [endText(d), d.story && d.price != null ? d.story : ""].filter(Boolean).join(" · "), img: d.img, to: d.to })}">${d.img ? `<img src="${esc(d.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
     <div class="dname"><span class="chip ${d.store.key}">${d.store.label}</span>${esc(d.name)}</div>
     <div class="dmeta">${esc(endText(d))}${d.story && d.price != null ? " · " + esc(d.story) : ""}</div></div>
     <div class="dprice">${esc(priceText(d))}</div></div>`;
@@ -502,7 +517,7 @@ async function loadFlyer(st){
 }
 function flyerRow(it, k){
   const onList = data.items.some(i => !i.done && norm(i.name) === norm(it.name.split(",")[0]));
-  const z = zoomId({ store: flyerOpen.store, name: it.name, price: it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : "Prix à voir en magasin", meta: endText({ to: it.to }), img: it.img, cat: it.cat });
+  const z = zoomId({ store: flyerOpen.store, name: it.name, price: it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : "Prix à voir en magasin", meta: endText({ to: it.to }), img: it.img, cat: it.cat, to: it.to });
   return `<div class="deal zoomable" data-zoom="${z}">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
     <div class="dname">${esc(it.name)}</div></div>
     <div class="dprice">${it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : `<span class="dmeta">Voir prix</span>`}</div>
@@ -545,7 +560,9 @@ $("flyerBtns").addEventListener("click", e => { const b = e.target.closest("[dat
 $("flyer").addEventListener("click", async e => { const b = e.target.closest("[data-fadd]"); if (!b || !flyerOpen) return;
   const it = flyerOpen.items[Number(b.dataset.fadd)]; if (!it) return;
   const name = it.name.split(",")[0].trim(); b.disabled = true; b.textContent = "✓";
-  toast((await addToList(name, "", it.cat)) ? `${name} ajouté à la liste` : `${name} est déjà sur la liste`); });
+  const p = it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : "";
+  const st = flyerOpen.store;
+  toast((await addToList(name, "", it.cat, null, { store: st.key, label: st.label, price: p, to: it.to || "" })) ? `${name} ajouté à la liste (${st.label})` : `${name} : ${st.label} noté sur la liste`); });
 
 $("dealsGo").onclick = () => { closeFlyer(); runDeals(); };
 $("dealSearch").addEventListener("submit", async e => {
@@ -572,8 +589,10 @@ document.addEventListener("click", e => {
   $("zStore").className = "chip " + z.store.key; $("zStore").textContent = z.store.label;
   $("zName").textContent = z.name; $("zPrice").textContent = z.price; $("zMeta").textContent = z.meta || "";
   const listName = z.name.split(",")[0].trim();
-  const onList = data.items.some(i => !i.done && norm(i.name) === norm(listName));
-  $("zAdd").disabled = onList; $("zAdd").textContent = onList ? "✓ Déjà sur la liste" : "Ajouter à la liste";
+  const li = data.items.find(i => !i.done && norm(i.name) === norm(listName));
+  const same = li && li.deal && li.deal.store === z.store.key;
+  $("zAdd").disabled = !!same;
+  $("zAdd").textContent = same ? `✓ Sur la liste (${z.store.label})` : li ? `Noter : l'acheter chez ${z.store.label}` : "Ajouter à la liste";
   $("zoomSheet").hidden = false;
 });
 const closeZoom = () => { $("zoomSheet").hidden = true; zoomCur = null; };
@@ -582,5 +601,6 @@ $("zoomSheet").addEventListener("click", e => { if (e.target === $("zoomSheet"))
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("zoomSheet").hidden) closeZoom(); });
 $("zAdd").onclick = async () => { if (!zoomCur) return; const name = zoomCur.name.split(",")[0].trim();
   $("zAdd").disabled = true; $("zAdd").textContent = "✓ Ajouté";
-  toast((await addToList(name, "", zoomCur.cat || guess(name))) ? `${name} ajouté à la liste` : `${name} est déjà sur la liste`);
+  const z = zoomCur, dl = { store: z.store.key, label: z.store.label, price: /\d/.test(z.price) ? z.price : "", to: z.to || "" };
+  toast((await addToList(name, "", z.cat || guess(name), null, dl)) ? `${name} ajouté à la liste (${dl.label})` : `${name} : ${dl.label} noté sur la liste`);
   if (flyerOpen) renderFlyer(); };

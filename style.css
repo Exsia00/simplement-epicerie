@@ -169,3 +169,10 @@ textarea.f{min-height:120px;resize:vertical;line-height:1.45}
 .zname{font-family:var(--display);font-weight:600;font-size:1.2rem;margin:14px 0 4px;overflow-wrap:anywhere}
 .zprice{font-family:var(--display);font-weight:800;font-size:1.8rem;margin:0 0 6px;color:var(--accent);font-variant-numeric:tabular-nums}
 .zoom-in .row .btn{width:100%}
+
+/* Où l'acheter (spécial) */
+.where{display:flex;align-items:center;flex-wrap:wrap;gap:0;font-size:.8rem;font-weight:700;color:var(--ink);margin-top:3px}
+.where .chip{font-size:.68rem;padding:1px 7px}
+.where.fini{color:var(--muted);font-weight:400}
+.where.fini .chip{opacity:.5}
+li.done .where{opacity:.6}
