@@ -65,21 +65,42 @@ async function refresh(){
     loaded = true; $("offline").hidden = true; renderAll();
   } catch(e){ $("offline").hidden = false; }
 }
-async function act(action, args, optimistic){
+const apiRepas = (action, args = {}) => rpc("api_repas", { p_code: code, p_action: action, p_args: args });
+async function act(action, args, optimistic, fn = api){
   if (optimistic){ optimistic(); renderAll(); }
   busy++;
   try {
-    const r = await api(action, args);
+    const r = await fn(action, args);
     if (!r.ok) toast("Pas pu enregistrer. Réessaie.");
     return r;
   } catch(e){ $("offline").hidden = false; toast("Pas de connexion. Réessaie."); return { ok:false }; }
   finally { busy--; refresh(); }
 }
-async function addToList(name, qty, cat){
-  if (data.items.some(i => !i.done && norm(i.name) === norm(name))) return false;
-  const r = await act("item_add", { name, qty: qty || "", cat: cat || guess(name) },
-    () => data.items.push({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false }));
-  return r.ok && !r.dup;
+// meal (optionnel) = { id, name } : retient pour quel repas l'article est sur la liste
+async function addToList(name, qty, cat, meal){
+  const dup = data.items.find(i => !i.done && norm(i.name) === norm(name));
+  if (dup && !meal) return false;
+  const args = { name, qty: qty || "", cat: cat || guess(name) };
+  if (!meal){
+    const r = await act("item_add", args,
+      () => data.items.push({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false, meals: [] }));
+    return r.ok && !r.dup;
+  }
+  const r = await act("item_add", { ...args, meal }, () => {
+    if (dup){ dup.meals = dup.meals || []; if (!dup.meals.some(x => x.id === meal.id)) dup.meals.push(meal); }
+    else data.items.push({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false, meals: [meal], from_meal: true });
+  }, apiRepas);
+  return !dup && r.ok && !r.dup;
+}
+const mealsOf = i => Array.isArray(i.meals) ? i.meals : [];
+// Repas choisis = les repas qui ont encore au moins un ingrédient sur la liste
+function plannedMeals(){
+  const map = new Map();
+  for (const i of data.items) for (const m of mealsOf(i)){
+    const p = map.get(m.id) || { id: m.id, name: (data.meals.find(x => x.id === m.id) || m).name, left: 0, total: 0 };
+    p.total++; if (!i.done) p.left++; map.set(m.id, p);
+  }
+  return [...map.values()].sort((a, b) => norm(a.name).localeCompare(norm(b.name)));
 }
 
 /* ---------- Rendu ---------- */
@@ -94,12 +115,16 @@ function renderList(){
   $("clearZone").hidden = !done;
   if (!loaded){ $("list").innerHTML = ""; return; }
   if (!its.length){ $("list").innerHTML = `<p class="empty">Ajoute un article en bas, scanne un code-barres,<br>ou passe par « Avant de partir » et « Repas ».</p>`; return; }
-  $("list").innerHTML = CATS.filter(c => its.some(i => (CATS.includes(i.cat) ? i.cat : "Autre") === c)).map(c => {
+  const pm = plannedMeals();
+  const planned = pm.length ? `<section class="planned"><h2><span>Repas choisis</span><span>${pm.length}</span></h2><ul class="box">${pm.map(p => `
+    <li><span class="name"><b>${esc(p.name)}</b><span class="qty">${p.left ? `${p.left} ingrédient${p.left>1?"s":""} à acheter` : "tout est dans le panier ✓"}</span></span>
+    <button class="btn sm ghost" type="button" data-unplan="${esc(p.id)}">Retirer</button></li>`).join("")}</ul></section>` : "";
+  $("list").innerHTML = planned + CATS.filter(c => its.some(i => (CATS.includes(i.cat) ? i.cat : "Autre") === c)).map(c => {
     const g = its.filter(i => (CATS.includes(i.cat) ? i.cat : "Autre") === c).sort((a,b) => a.done - b.done);
     const left = g.filter(i => !i.done).length;
     return `<section><h2><span>${c}</span><span>${left || "✓"}</span></h2><ul class="box">${g.map(i => `
       <li class="${i.done ? "done" : ""}"><label><input class="chk" type="checkbox" data-id="${esc(i.id)}" ${i.done ? "checked" : ""}>
-      <span class="name">${esc(i.name)}${i.qty ? `<span class="qty">${esc(i.qty)}</span>` : ""}</span></label>
+      <span class="name">${esc(i.name)}${i.qty ? `<span class="qty">${esc(i.qty)}</span>` : ""}${mealsOf(i).length ? `<span class="for">pour : ${mealsOf(i).map(m => esc((data.meals.find(x => x.id === m.id) || m).name)).join(", ")}</span>` : ""}</span></label>
       <button class="del" type="button" data-del="${esc(i.id)}" aria-label="Enlever ${esc(i.name)}">×</button></li>`).join("")}</ul></section>`;
   }).join("");
 }
@@ -119,8 +144,9 @@ function renderMeals(){
   const open = new Set([...document.querySelectorAll(".meal[open]")].map(d => d.dataset.id));
   const ms = [...data.meals].sort((a,b) => norm(a.name).localeCompare(norm(b.name)));
   if (!ms.length){ $("meals").innerHTML = `<p class="empty">Ta banque de repas est vide.<br>Appuie sur « Nouveau repas » pour commencer.</p>`; return; }
+  const onList = new Set(plannedMeals().map(p => p.id));
   $("meals").innerHTML = ms.map(m => { const ing = Array.isArray(m.ingredients) ? m.ingredients : [];
-    return `<details class="meal" data-id="${esc(m.id)}" ${open.has(m.id) ? "open" : ""}><summary><b>${esc(m.name)}</b><span>${ing.length} ingrédient${ing.length>1?"s":""}</span></summary><div class="body">
+    return `<details class="meal" data-id="${esc(m.id)}" ${open.has(m.id) ? "open" : ""}><summary><b>${esc(m.name)}</b><span>${onList.has(m.id) ? `<i class="onlist">Sur la liste</i>` : ""}${ing.length} ingrédient${ing.length>1?"s":""}</span></summary><div class="body">
       <div class="row" style="margin-top:14px"><button class="btn pri sm" type="button" data-cook="${esc(m.id)}">Ajouter les ingrédients à la liste</button></div>
       <h3>Ingrédients</h3><ul>${ing.map(x => `<li>${esc(x.name)}${x.qty ? ` <span class="qty">${esc(x.qty)}</span>` : ""}</li>`).join("") || "<li>Aucun</li>"}</ul>
       ${m.recipe ? `<h3>Recette</h3><p class="recipe">${esc(m.recipe)}</p>` : ""}
@@ -171,7 +197,18 @@ $("form").addEventListener("submit", async e => {
 });
 $("list").addEventListener("change", e => { const id = e.target.dataset.id; if (!id) return; const v = e.target.checked;
   act("item_done", { id, done: v }, () => { const it = data.items.find(i => i.id === id); if (it) it.done = v; }); });
-$("list").addEventListener("click", e => { const id = e.target.dataset.del; if (!id) return;
+$("list").addEventListener("click", e => {
+  const up = e.target.dataset.unplan;
+  if (up){
+    if (!e.target.dataset.sure){ e.target.dataset.sure = "1"; e.target.textContent = "Retirer ses ingrédients?"; e.target.classList.add("warnb"); return; }
+    const p = plannedMeals().find(x => x.id === up); const meal = { id: up, name: p ? p.name : "" };
+    act("unplan", { meal }, () => {
+      data.items.forEach(i => { if (!i.done) i.meals = mealsOf(i).filter(m => m.id !== up); });
+      data.items = data.items.filter(i => i.done || !i.from_meal || mealsOf(i).length);
+    }, apiRepas);
+    toast(`${meal.name || "Repas"} retiré de la liste`); return;
+  }
+  const id = e.target.dataset.del; if (!id) return;
   act("item_del", { id }, () => { data.items = data.items.filter(i => i.id !== id); }); });
 $("clearBtn").onclick = () => { $("confirm").hidden = false; $("clearBtn").hidden = true; };
 $("no").onclick = () => { $("confirm").hidden = true; $("clearBtn").hidden = false; };
@@ -215,7 +252,7 @@ $("mealForm").addEventListener("submit", async e => {
 $("meals").addEventListener("click", async e => {
   const t = e.target.dataset;
   if (t.cook){ const m = data.meals.find(x => x.id === t.cook); if (!m) return; let a = 0, s = 0;
-    for (const x of m.ingredients || []){ if (await addToList(x.name, x.qty, x.cat)) a++; else s++; }
+    for (const x of m.ingredients || []){ if (await addToList(x.name, x.qty, x.cat, { id: m.id, name: m.name })) a++; else s++; }
     toast(`${a} ajouté${a>1?"s":""} à la liste${s ? ` · ${s} déjà dessus` : ""}`); }
   if (t.medit){ openForm(data.meals.find(x => x.id === t.medit)); window.scrollTo(0, 0); }
   if (t.mdel){ if (e.target.dataset.sure){ act("meal_del", { id: t.mdel }, () => { data.meals = data.meals.filter(x => x.id !== t.mdel); }); }

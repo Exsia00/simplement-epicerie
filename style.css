@@ -44,6 +44,13 @@ section h2{font-family:var(--display);font-weight:600;font-size:.82rem;text-tran
 .name{overflow-wrap:anywhere;min-width:0}
 .qty{color:var(--muted);font-size:.9rem;margin-left:6px;font-variant-numeric:tabular-nums}
 li.done .name{color:var(--done);text-decoration:line-through}
+.for{display:block;color:var(--accent);font-size:.8rem;font-weight:700;margin-top:2px}
+li.done .for{color:var(--done)}
+.planned .box>li{padding-right:8px}
+.planned .name{flex:1;padding-block:10px}
+.planned .qty{display:block;margin-left:0}
+.planned .btn{flex:none}
+.onlist{font-style:normal;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 8px;margin-right:8px;font-size:.78rem}
 .del{width:40px;height:40px;flex:none;border:0;background:none;color:var(--muted);font-size:1.4rem;cursor:pointer;border-radius:10px}
 .del:hover{color:var(--tomato);background:var(--bg)}
 .empty{text-align:center;color:var(--muted);margin-top:36px}
