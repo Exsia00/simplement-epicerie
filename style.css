@@ -1,14 +1,15 @@
 /* Simplement L'Épicerie — une colonne de poche, onglets en haut, barre d'ajout en bas pour le pouce */
 :root{
-  --bg:#f6f8f5; --surface:#ffffff; --ink:#1d2b24; --muted:#66756d; --line:#dfe6e0;
-  --accent:#2f7a55; --accent-ink:#ffffff; --accent-soft:#e3f1e9; --tomato:#d2492a; --tomato-soft:#fbe7e1; --done:#a3b0a8;
-  --display:"Bricolage Grotesque","Arial Rounded MT Bold",system-ui,sans-serif;
+  /* Nuit 1985 : ciel violet, lasers magenta et cyan, soleil orange */
+  --bg:#150a30; --surface:#1f1148; --ink:#f3ebff; --muted:#a998d8; --line:#3a2775;
+  --accent:#ff2bd6; --accent-ink:#1a0633; --accent-soft:rgba(255,43,214,.14);
+  --cyan:#2be8ff; --sun:#ffb547;
+  --tomato:#ff5a6e; --tomato-soft:rgba(255,90,110,.14); --done:#6f5fa3;
+  --display:"Audiowide","Arial Black",system-ui,sans-serif;
   --body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
-  color-scheme:light;
+  --lcd:"VT323",ui-monospace,monospace;
+  color-scheme:dark;
 }
-@media (prefers-color-scheme:dark){:root{
-  --bg:#121815; --surface:#1a221e; --ink:#e6eee9; --muted:#93a39a; --line:#2b3631;
-  --accent:#5fbf8c; --accent-ink:#0e1612; --accent-soft:#1e3328; --tomato:#ef7a5c; --tomato-soft:#3a221b; --done:#55625b; color-scheme:dark}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
@@ -181,3 +182,116 @@ li.done .where{opacity:.6}
 .meal li.home{color:var(--muted)}
 .athome{display:inline-block;font-size:.75rem;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px}
 .meal li .linkbtn{font-size:.8rem}
+
+
+/* ================= Thème rétro 80 « cyber laser » ================= */
+/* Ciel : soleil rayé + grille au néon, seulement en haut */
+.sky{position:relative;overflow:hidden;isolation:isolate;
+  background:linear-gradient(180deg,#0d0524 0%,#2a0d55 55%,#5a1270 78%,var(--bg) 100%)}
+.sky::before{content:"";position:absolute;z-index:-1;left:50%;margin-left:-50px;bottom:22px;width:100px;height:100px;border-radius:50%;
+  background:linear-gradient(180deg,#ffe066 0%,var(--sun) 35%,#ff4fa3 75%,#c2179b 100%);
+  -webkit-mask:linear-gradient(180deg,#000 52%,transparent 52% 56%,#000 56% 64%,transparent 64% 69%,#000 69% 76%,transparent 76% 82%,#000 82% 88%,transparent 88%);
+          mask:linear-gradient(180deg,#000 52%,transparent 52% 56%,#000 56% 64%,transparent 64% 69%,#000 69% 76%,transparent 76% 82%,#000 82% 88%,transparent 88%);
+  filter:drop-shadow(0 0 24px rgba(255,79,163,.55));opacity:.9}
+.sky::after{content:"";position:absolute;z-index:-1;left:-50%;right:-50%;bottom:0;height:70px;
+  background-image:linear-gradient(rgba(255,43,214,.75) 2px,transparent 2px),linear-gradient(90deg,rgba(255,43,214,.6) 2px,transparent 2px);
+  background-size:44px 22px;transform:perspective(160px) rotateX(58deg);transform-origin:bottom;
+  -webkit-mask:linear-gradient(transparent,#000 70%);mask:linear-gradient(transparent,#000 70%);
+  animation:grille 2.4s linear infinite}
+@keyframes grille{to{background-position:0 22px}}
+.sky .head{padding-bottom:132px}
+body{background:var(--bg)}
+body::before{background:#0d0524}
+
+/* Titre chromé */
+h1{font-family:var(--display);font-weight:400;letter-spacing:.01em;
+  background:linear-gradient(180deg,#ffffff 0%,#bdf6ff 45%,var(--cyan) 50%,#ff8ae6 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 10px rgba(43,232,255,.35))}
+.hrow h1{font-size:1.7rem}
+header p{color:#d9cbff}
+.bar{height:8px;background:rgba(255,255,255,.12);border-radius:4px}
+.bar span{background:linear-gradient(90deg,var(--accent),var(--cyan));box-shadow:0 0 12px var(--cyan)}
+.hrow .btn.ghost{color:#d9cbff}
+
+/* Onglets */
+.tabs{background:rgba(21,10,48,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom-color:var(--line)}
+.tabs .inner{background:#120828;border-color:var(--line)}
+.tabs button{font-family:var(--display);font-weight:400;font-size:.74rem;letter-spacing:.02em}
+.tabs button[aria-selected="true"]{background:none;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent),0 0 14px rgba(255,43,214,.45);text-shadow:0 0 8px rgba(255,43,214,.8)}
+
+/* Titres de section : cyan, casse normale */
+section h2{font-family:var(--display);font-weight:400;font-size:.9rem;text-transform:none;letter-spacing:.02em;color:var(--cyan)}
+section h2 span:last-child{font-family:var(--lcd);font-size:1.25rem;line-height:1;color:var(--muted)}
+
+/* Panneaux */
+.box,.card,.meal,.store{background:var(--surface);border-color:var(--line)}
+.box>li,.deal{border-top-color:rgba(255,255,255,.07)}
+.qty{font-family:var(--lcd);font-size:1.15rem;color:var(--muted)}
+
+/* Cases à cocher laser */
+.chk{border-color:#8d7ccc;background:#120828;border-radius:6px}
+.chk:checked{background:var(--accent);border-color:var(--accent);box-shadow:0 0 10px rgba(255,43,214,.7)}
+li.done .name{color:var(--done)}
+
+/* Boutons */
+.btn{background:#140a32;border-color:var(--line);color:var(--ink)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:0 0 16px rgba(255,43,214,.4)}
+.btn.warnb{background:none}
+.btn.ghost{background:none}
+.linkbtn{color:var(--cyan)}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline-color:var(--cyan)}
+.f,.add input,.add select{background:#120828;border-color:var(--line);color:var(--ink)}
+.f:focus,.add input:focus,.add select:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(43,232,255,.18)}
+::placeholder{color:#8273b8}
+
+/* Notes */
+.note{border-color:var(--line)}
+.note.ok{background:rgba(43,232,255,.08);border-color:var(--cyan);color:var(--ink)}
+.note.warn{color:var(--tomato)}
+
+/* Repas */
+.meal summary b{font-family:var(--display);font-weight:400;font-size:1.02rem}
+.meal h3{font-family:var(--display);font-weight:400;text-transform:none;letter-spacing:.02em;color:var(--cyan);font-size:.85rem}
+.for{color:var(--accent)}
+.onlist,.athome{background:var(--accent-soft);color:var(--accent)}
+
+/* Avant de partir */
+.seg button{background:#120828;border-color:var(--line)}
+.seg .have[aria-pressed="true"]{background:rgba(43,232,255,.12);border-color:var(--cyan);color:var(--cyan)}
+
+/* Barre d'ajout */
+.add{background:#120828;border-top:1.5px solid var(--cyan);box-shadow:0 -6px 24px rgba(43,232,255,.12)}
+.add .go{background:var(--accent);color:var(--accent-ink);box-shadow:0 0 16px rgba(255,43,214,.45)}
+.add .cam{background:#1f1148;color:var(--cyan);border-color:var(--line)}
+
+/* Spéciaux : prix en chiffres d'écran digital */
+.deal .dprice,.zprice,.store b{font-family:var(--lcd);font-weight:400;letter-spacing:.02em}
+.deal .dprice{font-size:1.6rem;line-height:1;color:var(--sun);text-shadow:0 0 8px rgba(255,181,71,.45)}
+.zprice{font-size:3rem;line-height:1;color:var(--sun);text-shadow:0 0 14px rgba(255,181,71,.55)}
+.zname,.flyer-head b{font-family:var(--display);font-weight:400}
+.store b{font-size:2rem}
+.store.best{border-color:var(--cyan);background:rgba(43,232,255,.08);box-shadow:0 0 14px rgba(43,232,255,.25)}
+.store.best span{color:var(--cyan)}
+.best-line{color:var(--ink)}
+.deal img,.zimg{background:#fff}
+.where{color:var(--sun);font-family:var(--body)}
+.where .chip{color:#fff}
+.addf{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.flyer-btns .btn[aria-pressed="true"]{border-color:var(--cyan);background:rgba(43,232,255,.1);box-shadow:0 0 12px rgba(43,232,255,.3)}
+.zoomable:hover{background:rgba(255,255,255,.04)}
+
+/* Feuilles et messages */
+.sheet{background:rgba(8,3,22,.72)}
+.sheet-in{background:var(--surface);border-top:1.5px solid var(--accent);box-shadow:0 -10px 40px rgba(255,43,214,.25)}
+.sheet-head b{font-family:var(--display);font-weight:400}
+.toast{background:#0d0524;color:var(--ink);border:1.5px solid var(--cyan);box-shadow:0 0 18px rgba(43,232,255,.4)}
+
+/* Écran d'entrée */
+.login .lead{color:#d9cbff}
+.sky .login{padding-bottom:130px}
+.newfam summary{color:var(--cyan)}
+
+@media (prefers-reduced-motion:reduce){.sky::after{animation:none}}
+.planned .qty{font-family:var(--body);font-size:.88rem}
+.hrow .btn.ghost,header p{text-shadow:0 1px 6px #0d0524}

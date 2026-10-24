@@ -3,8 +3,8 @@
   "short_name": "Épicerie",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f6f8f5",
-  "theme_color": "#2f7a55",
+  "background_color": "#150a30",
+  "theme_color": "#0d0524",
   "lang": "fr-CA",
   "icons": [
     {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
