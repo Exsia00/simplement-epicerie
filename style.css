@@ -318,4 +318,6 @@ li.done .qtyb{opacity:.5}
 .sugg-it span{overflow-wrap:anywhere}
 .sugg-it small{flex:none;font-family:var(--lcd);font-size:1.1rem;color:var(--sun)}
 .sugg-msg{padding:12px 14px;color:var(--muted);font-size:.9rem}
+/* Liste : la boîte s'ouvre au-dessus de la barre du bas, défile si elle est longue (clavier ouvert) */
+.list-sugg{margin:0 0 10px;max-height:min(42vh,320px);overflow-y:auto;-webkit-overflow-scrolling:touch;background:#120828}
 .two #fQtyWrap[hidden]+div{grid-column:1/-1}

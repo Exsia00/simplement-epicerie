@@ -219,7 +219,7 @@ document.querySelector(".tabs").addEventListener("click", e => {
   const t = e.target.dataset.tab; if (!t) return; curTab = t;
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
   ["list","inv","meals","deals"].forEach(k => $("p-" + k).hidden = k !== t);
-  $("addBar").hidden = t !== "list"; window.scrollTo(0, 0);
+  $("addBar").hidden = t !== "list"; hideListSugg(); window.scrollTo(0, 0);
 });
 
 /* ---------- Liste ---------- */
@@ -229,7 +229,7 @@ $("fCat").innerHTML = catOptions;
 $("form").addEventListener("submit", async e => {
   e.preventDefault(); const n = $("item").value.trim(); if (!n) return;
   const q = $("qty").value.trim(), c = $("cat").value || guess(n);
-  $("item").value = ""; $("qty").value = ""; $("cat").value = ""; $("item").focus();
+  $("item").value = ""; $("qty").value = ""; $("cat").value = ""; hideListSugg(); $("item").focus();
   if (!(await addToList(n, q, c))) toast(`${n} est déjà sur la liste`);
 });
 $("list").addEventListener("change", e => { const id = e.target.dataset.id; if (!id) return; const v = e.target.checked;
@@ -278,8 +278,7 @@ $("stapleForm").addEventListener("submit", e => {
 $("stapleScan").onclick = () => startScan("staple");
 
 /* Suggestions de marques pendant qu'on tape (Open Food Facts, produits vendus au Canada) */
-const suggCache = new Map(); let suggT = null, suggSeq = 0, suggList = [];
-function hideSugg(){ $("sugg").hidden = true; $("sugg").innerHTML = ""; suggList = []; }
+const suggCache = new Map(); let hideSugg = () => {}, hideListSugg = () => {};
 async function searchProducts(q){
   const k = norm(q); if (suggCache.has(k)) return suggCache.get(k);
   const j = await fetchJSON(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=12&tagtype_0=countries&tag_contains_0=contains&tag_0=canada&fields=code,product_name_fr,product_name,brands,quantity,categories_tags&sort_by=unique_scans_n`, 7000);
@@ -304,23 +303,37 @@ async function searchProducts(q){
   }
   suggCache.set(k, out); return out;
 }
-$("stapleName").addEventListener("input", () => {
-  clearTimeout(suggT); const q = $("stapleName").value.trim();
-  if (q.length < 3){ hideSugg(); return; }
-  suggT = setTimeout(async () => {
-    const my = ++suggSeq; $("sugg").hidden = false; $("sugg").innerHTML = `<div class="sugg-msg">Je cherche des marques…</div>`;
-    const r = await searchProducts(q); if (my !== suggSeq) return;
-    if (r === null){ $("sugg").innerHTML = `<div class="sugg-msg">Pas de suggestions pour l'instant. Appuie sur « Ajouter » pour le nom tel quel.</div>`; return; }
-    if (!r.length){ $("sugg").innerHTML = `<div class="sugg-msg">Aucune marque trouvée. Appuie sur « Ajouter » pour le nom tel quel.</div>`; return; }
-    suggList = r;
-    $("sugg").innerHTML = r.map((p, k) => `<button type="button" class="sugg-it" data-sg="${k}"><span>${esc(p.name)}</span>${p.size ? `<small>${esc(p.size)}</small>` : ""}</button>`).join("");
-  }, 600);
-});
-$("sugg").addEventListener("click", e => { const b = e.target.closest("[data-sg]"); if (!b) return;
-  const p = suggList[Number(b.dataset.sg)]; if (!p) return;
-  if (addStaple(p.name, p.cat)){
-    if (p.code) api("product_save", { barcode: p.code, name: p.name, cat: p.cat }).catch(() => {});
-    $("stapleName").value = ""; hideSugg(); }
+/* Branche les suggestions sur une boîte de texte. onPick(produit) retourne true si l'ajout a marché. */
+function attachSugg(inputId, boxId, addLabel, onPick){
+  const box = $(boxId), input = $(inputId); let t = null, seq = 0, list = [];
+  const hide = () => { clearTimeout(t); seq++; box.hidden = true; box.innerHTML = ""; list = []; };
+  input.addEventListener("input", () => {
+    clearTimeout(t); const q = input.value.trim();
+    if (q.length < 3){ hide(); return; }
+    t = setTimeout(async () => {
+      const my = ++seq; box.hidden = false; box.innerHTML = `<div class="sugg-msg">Je cherche des marques…</div>`;
+      const r = await searchProducts(q); if (my !== seq) return;
+      if (r === null){ box.innerHTML = `<div class="sugg-msg">Pas de suggestions pour l'instant. Appuie sur « ${addLabel} » pour le nom tel quel.</div>`; return; }
+      if (!r.length){ box.innerHTML = `<div class="sugg-msg">Aucune marque trouvée. Appuie sur « ${addLabel} » pour le nom tel quel.</div>`; return; }
+      list = r;
+      box.innerHTML = r.map((p, k) => `<button type="button" class="sugg-it" data-sg="${k}"><span>${esc(p.name)}</span>${p.size ? `<small>${esc(p.size)}</small>` : ""}</button>`).join("");
+    }, 600);
+  });
+  box.addEventListener("click", async e => { const b = e.target.closest("[data-sg]"); if (!b) return;
+    const p = list[Number(b.dataset.sg)]; if (!p) return;
+    if (await onPick(p)){
+      if (p.code) api("product_save", { barcode: p.code, name: p.name, cat: p.cat }).catch(() => {});
+      input.value = ""; hide(); }
+  });
+  return hide;
+}
+hideSugg = attachSugg("stapleName", "sugg", "Ajouter", p => addStaple(p.name, p.cat));
+hideListSugg = attachSugg("item", "listSugg", "+", async p => {
+  const q = $("qty").value.trim(), c = $("cat").value || p.cat;
+  const added = await addToList(p.name, q, c);
+  $("qty").value = ""; $("cat").value = "";
+  toast(added ? `${p.name} ajouté à la liste` : `${p.name} est déjà sur la liste`);
+  return true;
 });
 
 /* ---------- Repas ---------- */
