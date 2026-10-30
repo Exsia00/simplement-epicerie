@@ -80,30 +80,43 @@ async function act(action, args, optimistic, fn = api){
   } catch(e){ $("offline").hidden = false; toast("Pas de connexion. Réessaie."); return { ok:false }; }
   finally { busy--; refresh(); }
 }
-// meal (optionnel) = { id, name } : retient pour quel repas l'article est sur la liste
+/* Deux listes : « courante » (l'épicerie de la semaine) et « costco » (une fois par mois) */
+const LIST_KEY = "epicerie-liste";
+const listOf = i => i.list === "costco" ? "costco" : "courante";
+const LIST_LABEL = { courante: "Épicerie", costco: "Costco" };
+let curList = (() => { try { return localStorage.getItem(LIST_KEY) === "costco" ? "costco" : "courante"; } catch(e){ return "courante"; } })();
+const itemsIn = l => data.items.filter(i => listOf(i) === l);
+// Un spécial Costco va dans la liste Costco; tout le reste dans la liste courante
+const listForStore = key => key === "costco" ? "costco" : "courante";
+const findOnList = (name, l) => data.items.find(i => !i.done && listOf(i) === l && norm(i.name) === norm(name));
+
+// meal (optionnel) = { id, name } : retient pour quel repas l'article est sur la liste (toujours la liste courante)
 // deal (optionnel) = { store, label, price, to } : retient où l'acheter en spécial
-async function addToList(name, qty, cat, meal, deal){
-  const dup = data.items.find(i => !i.done && norm(i.name) === norm(name));
+// list (optionnel) = "courante" ou "costco"; sinon : Costco pour un spécial Costco, la liste courante pour le reste
+async function addToList(name, qty, cat, meal, deal, list){
+  const l = meal ? "courante" : (list || (deal ? listForStore(deal.store) : "courante"));
+  const dup = findOnList(name, l);
+  const fresh = extra => ({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false, meals: [], list: l, ...extra });
   if (deal){
-    const r = await act("item_add", { name, qty: qty || "", cat: cat || guess(name), deal }, () => {
-      if (dup) dup.deal = deal;
-      else data.items.push({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false, meals: [], deal });
+    const r = await act("item_add", { name, qty: qty || "", cat: cat || guess(name), deal, list: l }, () => {
+      if (dup) dup.deal = deal; else data.items.push(fresh({ deal }));
     }, apiSpecial);
     return !dup && r.ok && !r.dup;
   }
   if (dup && !meal) return false;
-  const args = { name, qty: qty || "", cat: cat || guess(name) };
+  const args = { name, qty: qty || "", cat: cat || guess(name), list: l };
   if (!meal){
-    const r = await act("item_add", args,
-      () => data.items.push({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false, meals: [] }));
+    const r = await act("item_add", args, () => data.items.push(fresh()));
     return r.ok && !r.dup;
   }
   const r = await act("item_add", { ...args, meal }, () => {
     if (dup){ dup.meals = dup.meals || []; if (!dup.meals.some(x => x.id === meal.id)) dup.meals.push(meal); }
-    else data.items.push({ id: "tmp" + Date.now(), name, qty: qty || "", cat: cat || guess(name), done: false, meals: [meal], from_meal: true });
+    else data.items.push(fresh({ meals: [meal], from_meal: true }));
   }, apiRepas);
   return !dup && r.ok && !r.dup;
 }
+// Le petit mot après un ajout : « ajouté à la liste » ou « ajouté à la liste Costco »
+const listWord = l => l === "costco" ? "la liste Costco" : "la liste";
 function dealTag(i){
   const d = i.deal; if (!d || !d.label) return "";
   const fini = d.to && Date.parse(d.to) < Date.now();
@@ -139,18 +152,34 @@ function plannedMeals(){
 }
 
 /* ---------- Rendu ---------- */
+const MOVE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>`;
 function renderHead(){
   $("famTitle").textContent = data.family || "L'épicerie";
-  const total = data.items.length, done = data.items.filter(i => i.done).length;
-  $("count").textContent = !loaded ? "Chargement…" : total ? `${total} article${total>1?"s":""} sur la liste · ${done} dans le panier` : "La liste est vide";
+  const its = itemsIn(curList), total = its.length, done = its.filter(i => i.done).length;
+  const nom = curList === "costco" ? "Costco" : "la liste";
+  $("count").textContent = !loaded ? "Chargement…" : total ? `${total} article${total>1?"s":""} sur ${nom} · ${done} dans le panier` : (curList === "costco" ? "La liste Costco est vide" : "La liste est vide");
   $("prog").style.width = total ? (done/total*100) + "%" : "0";
 }
+function renderSwitch(){
+  for (const l of ["courante", "costco"]){
+    const b = $("listSwitch").querySelector(`[data-list="${l}"]`); if (!b) continue;
+    const left = itemsIn(l).filter(i => !i.done).length;
+    b.setAttribute("aria-pressed", String(l === curList));
+    b.querySelector("i").textContent = loaded && left ? left : "";
+  }
+  $("listSwitch").dataset.on = curList; document.body.dataset.list = curList;
+  $("item").placeholder = curList === "costco" ? "Ajouter à Costco…" : "Ajouter un article…";
+  $("clearBtn").textContent = curList === "costco" ? "Retirer ce qui est dans le panier Costco" : "Retirer ce qui est dans le panier";
+}
 function renderList(){
-  const its = data.items, done = its.filter(i => i.done).length;
+  renderSwitch();
+  const its = itemsIn(curList), done = its.filter(i => i.done).length, other = curList === "costco" ? "courante" : "costco";
   $("clearZone").hidden = !done;
   if (!loaded){ $("list").innerHTML = ""; return; }
-  if (!its.length){ $("list").innerHTML = `<p class="empty">Ajoute un article en bas, scanne un code-barres,<br>ou passe par « Avant de partir » et « Repas ».</p>`; return; }
-  const pm = plannedMeals();
+  if (!its.length){ $("list").innerHTML = curList === "costco"
+    ? `<p class="empty">Rien pour Costco pour l'instant.<br>Ajoute ici ce qui s'accumule d'un mois à l'autre,<br>ou touche « + » dans la circulaire Costco.</p>`
+    : `<p class="empty">Ajoute un article en bas, scanne un code-barres,<br>ou passe par « Avant de partir » et « Repas ».</p>`; return; }
+  const pm = curList === "courante" ? plannedMeals() : [];
   const planned = pm.length ? `<section class="planned"><h2><span>Repas choisis</span><span>${pm.length}</span></h2><ul class="box">${pm.map(p => `
     <li><span class="name"><b>${esc(p.name)}</b><span class="qty">${p.left ? `${p.left} ingrédient${p.left>1?"s":""} à acheter` : "tout est dans le panier ✓"}</span></span>
     <button class="btn sm ghost" type="button" data-unplan="${esc(p.id)}">Retirer</button></li>`).join("")}</ul></section>` : "";
@@ -161,6 +190,7 @@ function renderList(){
       <li class="${i.done ? "done" : ""}"><label><input class="chk" type="checkbox" data-id="${esc(i.id)}" ${i.done ? "checked" : ""}>
       <span class="name">${esc(i.name)}${dealTag(i)}${mealsOf(i).length ? `<span class="for">pour : ${mealsOf(i).map(m => esc((data.meals.find(x => x.id === m.id) || m).name)).join(", ")}</span>` : ""}</span></label>
       <button class="qtyb ${i.qty ? "" : "vide"}" type="button" data-q="${esc(i.id)}" aria-label="Quantité de ${esc(i.name)} : ${esc(i.qty || "aucune")}">${i.qty ? esc(i.qty) : "Qté"}</button>
+      ${i.done ? "" : `<button class="moveb to-${other}" type="button" data-move="${esc(i.id)}" title="Envoyer à ${LIST_LABEL[other]}" aria-label="Envoyer ${esc(i.name)} à la liste ${LIST_LABEL[other]}">${MOVE_ICON}</button>`}
       <button class="del" type="button" data-del="${esc(i.id)}" aria-label="Enlever ${esc(i.name)}">×</button></li>`).join("")}</ul></section>`;
   }).join("");
 }
@@ -230,8 +260,20 @@ $("form").addEventListener("submit", async e => {
   e.preventDefault(); const n = $("item").value.trim(); if (!n) return;
   const q = $("qty").value.trim(), c = $("cat").value || guess(n);
   $("item").value = ""; $("qty").value = ""; $("cat").value = ""; hideListSugg(); $("item").focus();
-  if (!(await addToList(n, q, c))) toast(`${n} est déjà sur la liste`);
+  if (!(await addToList(n, q, c, null, null, curList))) toast(`${n} est déjà sur ${listWord(curList)}`);
 });
+$("listSwitch").addEventListener("click", e => { const b = e.target.closest("#listSwitch [data-list]"); if (!b || b.dataset.list === curList) return;
+  curList = b.dataset.list; try { localStorage.setItem(LIST_KEY, curList); } catch(err){}
+  $("confirm").hidden = true; $("clearBtn").hidden = false; hideListSugg(); renderHead(); renderList(); });
+async function moveItem(id){
+  const it = data.items.find(i => i.id === id); if (!it) return;
+  if (String(id).startsWith("tmp")){ toast("Un instant, l'article s'enregistre…"); return; }
+  const to = listOf(it) === "costco" ? "courante" : "costco";
+  if (findOnList(it.name, to)){ toast(`${it.name} est déjà sur ${listWord(to)}`); return; }
+  const r = await act("move", { id, list: to }, () => { it.list = to; it.from_meal = false; }, apiItem);
+  if (r.ok && r.dup) toast(`${it.name} est déjà sur ${listWord(to)}`);
+  else if (r.ok) toast(`${it.name} envoyé à ${listWord(to)}`);
+}
 $("list").addEventListener("change", e => { const id = e.target.dataset.id; if (!id) return; const v = e.target.checked;
   act("item_done", { id, done: v }, () => { const it = data.items.find(i => i.id === id); if (it) it.done = v; }); });
 $("list").addEventListener("click", e => {
@@ -246,12 +288,14 @@ $("list").addEventListener("click", e => {
     toast(`${meal.name || "Repas"} retiré de la liste`); return;
   }
   const qb = e.target.closest("[data-q]"); if (qb){ openQty(qb.dataset.q); return; }
+  const mb = e.target.closest("[data-move]"); if (mb){ moveItem(mb.dataset.move); return; }
   const id = e.target.dataset.del; if (!id) return;
   act("item_del", { id }, () => { data.items = data.items.filter(i => i.id !== id); }); });
 $("clearBtn").onclick = () => { $("confirm").hidden = false; $("clearBtn").hidden = true; };
 $("no").onclick = () => { $("confirm").hidden = true; $("clearBtn").hidden = false; };
 $("yes").onclick = () => { $("confirm").hidden = true; $("clearBtn").hidden = false;
-  act("items_clear_done", {}, () => { data.items = data.items.filter(i => !i.done); }); };
+  const l = curList;
+  act("items_clear_done", { list: l }, () => { data.items = data.items.filter(i => !i.done || listOf(i) !== l); }); };
 
 /* ---------- Avant de partir ---------- */
 $("inv").addEventListener("click", async e => {
@@ -330,9 +374,9 @@ function attachSugg(inputId, boxId, addLabel, onPick){
 hideSugg = attachSugg("stapleName", "sugg", "Ajouter", p => addStaple(p.name, p.cat));
 hideListSugg = attachSugg("item", "listSugg", "+", async p => {
   const q = $("qty").value.trim(), c = $("cat").value || p.cat;
-  const added = await addToList(p.name, q, c);
+  const l = curList, added = await addToList(p.name, q, c, null, null, l);
   $("qty").value = ""; $("cat").value = "";
-  toast(added ? `${p.name} ajouté à la liste` : `${p.name} est déjà sur la liste`);
+  toast(added ? `${p.name} ajouté à ${listWord(l)}` : `${p.name} est déjà sur ${listWord(l)}`);
   return true;
 });
 
@@ -513,7 +557,8 @@ $("foundForm").addEventListener("submit", async e => {
   $("foundSheet").hidden = true;
   api("product_save", { barcode: lastCode, name, cat }).catch(() => {});
   if (scanFor === "staple"){ addStaple(name, cat); return; }
-  toast((await addToList(name, $("fQty").value.trim(), cat)) ? `${name} ajouté à la liste` : `${name} est déjà sur la liste`);
+  const l = curList;
+  toast((await addToList(name, $("fQty").value.trim(), cat, null, null, l)) ? `${name} ajouté à ${listWord(l)}` : `${name} est déjà sur ${listWord(l)}`);
 });
 $("foundAgain").onclick = () => startScan();
 $("foundCancel").onclick = () => { $("foundSheet").hidden = true; };
@@ -614,7 +659,7 @@ async function loadFlyer(st){
   flyerCache.set(key, out); return out;
 }
 function flyerRow(it, k){
-  const onList = data.items.some(i => !i.done && norm(i.name) === norm(it.name.split(",")[0]));
+  const onList = !!findOnList(it.name.split(",")[0].trim(), listForStore(flyerOpen.store.key));
   const z = zoomId({ store: flyerOpen.store, name: it.name, price: it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : "Prix à voir en magasin", meta: endText({ to: it.to }), img: it.img, cat: it.cat, to: it.to });
   return `<div class="deal zoomable" data-zoom="${z}">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : ""}<div class="dtxt">
     <div class="dname">${esc(it.name)}</div></div>
@@ -660,7 +705,8 @@ $("flyer").addEventListener("click", async e => { const b = e.target.closest("[d
   const name = it.name.split(",")[0].trim(); b.disabled = true; b.textContent = "✓";
   const p = it.price != null ? it.price.toFixed(2).replace(".", ",") + " $" : "";
   const st = flyerOpen.store;
-  toast((await addToList(name, "", it.cat, null, { store: st.key, label: st.label, price: p, to: it.to || "" })) ? `${name} ajouté à la liste (${st.label})` : `${name} : ${st.label} noté sur la liste`); });
+  const l = listForStore(st.key);
+  toast((await addToList(name, "", it.cat, null, { store: st.key, label: st.label, price: p, to: it.to || "" })) ? `${name} ajouté à ${listWord(l)} (${st.label})` : `${name} : ${st.label} noté sur ${listWord(l)}`); });
 
 $("dealsGo").onclick = () => { closeFlyer(); runDeals(); };
 $("dealSearch").addEventListener("submit", async e => {
@@ -687,10 +733,10 @@ document.addEventListener("click", e => {
   $("zStore").className = "chip " + z.store.key; $("zStore").textContent = z.store.label;
   $("zName").textContent = z.name; $("zPrice").textContent = z.price; $("zMeta").textContent = z.meta || "";
   const listName = z.name.split(",")[0].trim();
-  const li = data.items.find(i => !i.done && norm(i.name) === norm(listName));
+  const zl = listForStore(z.store.key), li = findOnList(listName, zl);
   const same = li && li.deal && li.deal.store === z.store.key;
   $("zAdd").disabled = !!same;
-  $("zAdd").textContent = same ? `✓ Sur la liste (${z.store.label})` : li ? `Noter : l'acheter chez ${z.store.label}` : "Ajouter à la liste";
+  $("zAdd").textContent = same ? `✓ Sur ${listWord(zl)} (${z.store.label})` : li ? `Noter : l'acheter chez ${z.store.label}` : zl === "costco" ? "Ajouter à la liste Costco" : "Ajouter à la liste";
   $("zoomSheet").hidden = false;
 });
 const closeZoom = () => { $("zoomSheet").hidden = true; zoomCur = null; };
@@ -700,7 +746,8 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("zoomSh
 $("zAdd").onclick = async () => { if (!zoomCur) return; const name = zoomCur.name.split(",")[0].trim();
   $("zAdd").disabled = true; $("zAdd").textContent = "✓ Ajouté";
   const z = zoomCur, dl = { store: z.store.key, label: z.store.label, price: /\d/.test(z.price) ? z.price : "", to: z.to || "" };
-  toast((await addToList(name, "", z.cat || guess(name), null, dl)) ? `${name} ajouté à la liste (${dl.label})` : `${name} : ${dl.label} noté sur la liste`);
+  const l = listForStore(dl.store);
+  toast((await addToList(name, "", z.cat || guess(name), null, dl)) ? `${name} ajouté à ${listWord(l)} (${dl.label})` : `${name} : ${dl.label} noté sur ${listWord(l)}`);
   if (flyerOpen) renderFlyer(); };
 
 /* ---------- Quantité d'un article ---------- */

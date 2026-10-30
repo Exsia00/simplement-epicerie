@@ -321,3 +321,23 @@ li.done .qtyb{opacity:.5}
 /* Liste : la boîte s'ouvre au-dessus de la barre du bas, défile si elle est longue (clavier ouvert) */
 .list-sugg{margin:0 0 10px;max-height:min(42vh,320px);overflow-y:auto;-webkit-overflow-scrolling:touch;background:#120828}
 .two #fQtyWrap[hidden]+div{grid-column:1/-1}
+
+/* Deux listes : bascule Épicerie | Costco (magenta = épicerie, cyan = Costco) */
+.lswitch{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#120828;border:1px solid var(--line);border-radius:14px;padding:4px;margin:16px 0 4px}
+.lswitch button{display:flex;align-items:center;justify-content:center;gap:10px;font:inherit;font-family:var(--display);font-size:.9rem;letter-spacing:.06em;text-transform:uppercase;
+  border:0;border-radius:10px;padding:11px 6px;background:none;color:var(--muted);cursor:pointer;transition:color .15s,box-shadow .15s}
+.lswitch i{font-style:normal;font-family:var(--lcd);font-size:1.35rem;line-height:1;letter-spacing:0;color:var(--sun);min-width:0}
+.lswitch i:empty{display:none}
+.lswitch [data-list="courante"][aria-pressed="true"]{color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent),0 0 14px rgba(255,43,214,.4);text-shadow:0 0 8px rgba(255,43,214,.7)}
+.lswitch [data-list="costco"][aria-pressed="true"]{color:var(--cyan);box-shadow:inset 0 0 0 1.5px var(--cyan),0 0 14px rgba(43,232,255,.4);text-shadow:0 0 8px rgba(43,232,255,.7)}
+.lswitch [aria-pressed="true"] i{text-shadow:none}
+
+/* Sur la liste Costco, le bouton « + » de la barre du bas passe au cyan : on voit où ça s'en va */
+body[data-list="costco"] .add .go{background:var(--cyan);color:var(--accent-ink);box-shadow:0 0 16px rgba(43,232,255,.45)}
+
+/* Bouton pour envoyer un article dans l'autre liste */
+.moveb{flex:none;width:36px;height:36px;display:grid;place-items:center;padding:0;border-radius:10px;border:1.5px solid var(--line);background:#120828;cursor:pointer}
+.moveb svg{width:18px;height:18px}
+.moveb.to-costco{color:var(--cyan)}
+.moveb.to-courante{color:var(--accent)}
+.moveb:hover{border-color:currentColor}

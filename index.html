@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Épicerie">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=VT323&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 
@@ -60,6 +60,10 @@
 
   <main class="gut"><div class="inner">
     <div id="p-list" role="tabpanel">
+      <div class="lswitch" id="listSwitch" role="group" aria-label="Quelle liste">
+        <button type="button" data-list="courante" aria-pressed="true">Épicerie<i></i></button>
+        <button type="button" data-list="costco" aria-pressed="false">Costco<i></i></button>
+      </div>
       <div id="list"></div>
       <div class="row" id="clearZone" hidden>
         <button class="btn" type="button" id="clearBtn">Retirer ce qui est dans le panier</button>
@@ -216,6 +220,6 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
